@@ -154,34 +154,82 @@ class Tools:
 `;
 
 	const saveHandler = async () => {
-		loading = true;
-		onSave({
+		console.log('[ToolkitEditor] Starting saveHandler');
+		console.log('[ToolkitEditor] Current state:', {
 			id,
 			name,
-			meta,
-			content,
-			access_control: accessControl
+			meta: JSON.stringify(meta),
+			content: content.substring(0, 100) + '...', // Log first 100 chars to avoid console spam
+			accessControl: JSON.stringify(accessControl)
 		});
+		loading = true;
+		console.log('[ToolkitEditor] Setting loading state to true');
+		try {
+			console.log('[ToolkitEditor] Calling onSave with data');
+			await onSave({
+				id,
+				name,
+				meta,
+				content,
+				access_control: accessControl
+			});
+			console.log('[ToolkitEditor] onSave completed successfully');
+		} catch (error) {
+			console.error('[ToolkitEditor] Error in onSave:', error);
+			loading = false;
+			throw error;
+		}
 	};
 
 	const submitHandler = async () => {
+		console.log('[ToolkitEditor] Starting submitHandler');
+		console.log('[ToolkitEditor] CodeEditor instance:', !!codeEditor);
 		if (codeEditor) {
-			content = _content;
-			await tick();
+			try {
+				console.log('[ToolkitEditor] Updating content from editor');
+				content = _content;
+				console.log('[ToolkitEditor] Content length:', content.length);
+				await tick();
 
-			const res = await codeEditor.formatPythonCodeHandler();
-			await tick();
+				console.log('[ToolkitEditor] Starting Python code formatting');
+				const res = await codeEditor.formatPythonCodeHandler();
+				console.log('[ToolkitEditor] Format response:', res);
+				await tick();
 
-			content = _content;
-			await tick();
+				content = _content;
+				console.log('[ToolkitEditor] Updated content length after format:', content.length);
+				await tick();
 
-			if (res) {
-				console.log('Code formatted successfully');
-
-				saveHandler();
+				if (res) {
+					console.log('[ToolkitEditor] Code formatted successfully, proceeding to save');
+					await saveHandler();
+					console.log('[ToolkitEditor] Save completed');
+				} else {
+					console.error('[ToolkitEditor] Code formatting failed');
+					loading = false;
+				}
+			} catch (error) {
+				console.error('[ToolkitEditor] Error in submitHandler:', error);
+				loading = false;
 			}
+		} else {
+			console.error('[ToolkitEditor] CodeEditor not found');
+			loading = false;
 		}
 	};
+
+	onMount(() => {
+		console.log('[ToolkitEditor] Component mounted');
+		console.log('[ToolkitEditor] Initial props:', {
+			edit,
+			clone,
+			id,
+			name,
+			hasContent: !!content,
+			contentLength: content?.length,
+			hasAccessControl: !!accessControl
+		});
+	});
 </script>
 
 <AccessControlModal

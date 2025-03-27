@@ -60,30 +60,50 @@
 	);
 
 	const shareHandler = async (tool) => {
+		console.log('[Tools] Starting shareHandler for tool:', tool.id);
 		const item = await getToolById(localStorage.token, tool.id).catch((error) => {
+			console.error('[Tools] Error fetching tool for sharing:', error);
 			toast.error(`${error}`);
 			return null;
 		});
 
+		if (!item) {
+			console.error('[Tools] Failed to fetch tool for sharing');
+			return;
+		}
+
+		console.log('[Tools] Successfully fetched tool for sharing:', item.id);
 		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
 
 		const url = 'https://openwebui.com';
-
+		console.log('[Tools] Opening new tab for sharing');
 		const tab = await window.open(`${url}/tools/create`, '_blank');
+
+		if (!tab) {
+			console.error('[Tools] Failed to open new tab for sharing');
+			return;
+		}
 
 		// Define the event handler function
 		const messageHandler = (event) => {
-			if (event.origin !== url) return;
+			console.log('[Tools] Received postMessage event:', event.origin);
+			if (event.origin !== url) {
+				console.log('[Tools] Ignoring message from unknown origin:', event.origin);
+				return;
+			}
 			if (event.data === 'loaded') {
+				console.log('[Tools] Community page loaded, sending tool data');
 				tab.postMessage(JSON.stringify(item), '*');
+				console.log('[Tools] Tool data sent to community page');
 
 				// Remove the event listener after handling the message
 				window.removeEventListener('message', messageHandler);
+				console.log('[Tools] Removed message event listener');
 			}
 		};
 
 		window.addEventListener('message', messageHandler, false);
-		console.log(item);
+		console.log('[Tools] Added message event listener');
 	};
 
 	const cloneHandler = async (tool) => {
@@ -117,12 +137,15 @@
 	};
 
 	const deleteHandler = async (tool) => {
+		console.log('[Tools] Starting deleteHandler for tool:', tool.id);
 		const res = await deleteToolById(localStorage.token, tool.id).catch((error) => {
+			console.error('[Tools] Error deleting tool:', error);
 			toast.error(`${error}`);
 			return null;
 		});
 
 		if (res) {
+			console.log('[Tools] Tool deleted successfully:', tool.id);
 			toast.success($i18n.t('Tool deleted successfully'));
 
 			init();
@@ -130,40 +153,75 @@
 	};
 
 	const init = async () => {
-		tools = await getToolList(localStorage.token);
-		_tools.set(await getTools(localStorage.token));
+		console.log('[Tools] Starting initialization');
+		try {
+			console.log('[Tools] Fetching tool list');
+			tools = await getToolList(localStorage.token);
+			console.log('[Tools] Got tool list, count:', tools.length);
+
+			console.log('[Tools] Updating tools store');
+			const toolsData = await getTools(localStorage.token);
+			_tools.set(toolsData);
+			console.log('[Tools] Tools store updated, count:', toolsData.length);
+		} catch (error) {
+			console.error('[Tools] Error during initialization:', error);
+		}
 	};
 
 	onMount(async () => {
-		await init();
-		loaded = true;
+		console.log('[Tools] Component mounting');
+		try {
+			await init();
+			console.log('[Tools] Initialization complete');
+			loaded = true;
+		} catch (error) {
+			console.error('[Tools] Error during mount:', error);
+		}
 
 		const onKeyDown = (event) => {
+			console.log('[Tools] Key down event:', event.key);
 			if (event.key === 'Shift') {
 				shiftKey = true;
+				console.log('[Tools] Shift key pressed');
 			}
 		};
 
 		const onKeyUp = (event) => {
+			console.log('[Tools] Key up event:', event.key);
 			if (event.key === 'Shift') {
 				shiftKey = false;
+				console.log('[Tools] Shift key released');
 			}
 		};
 
 		const onBlur = () => {
+			console.log('[Tools] Window blur event');
 			shiftKey = false;
 		};
 
 		window.addEventListener('keydown', onKeyDown);
 		window.addEventListener('keyup', onKeyUp);
 		window.addEventListener('blur-sm', onBlur);
+		console.log('[Tools] Event listeners attached');
 
 		return () => {
 			window.removeEventListener('keydown', onKeyDown);
 			window.removeEventListener('keyup', onKeyUp);
 			window.removeEventListener('blur-sm', onBlur);
+			console.log('[Tools] Event listeners cleaned up');
 		};
 	});
+
+	$: {
+		console.log('[Tools] Filtering items with query:', query);
+		filteredItems = tools.filter(
+			(t) =>
+				query === '' ||
+				t.name.toLowerCase().includes(query.toLowerCase()) ||
+				t.id.toLowerCase().includes(query.toLowerCase())
+		);
+		console.log('[Tools] Filtered items count:', filteredItems.length);
+	}
 </script>
 
 <svelte:head>
@@ -486,17 +544,23 @@
 			const reader = new FileReader();
 			reader.onload = async (event) => {
 				const _tools = JSON.parse(event.target.result);
-				console.log(_tools);
+				console.log('[Tools] Importing tools:', _tools);
 
 				for (const tool of _tools) {
+					console.log('[Tools] Creating tool:', tool.id);
 					const res = await createNewTool(localStorage.token, tool).catch((error) => {
+						console.error('[Tools] Error creating tool:', error);
 						toast.error(`${error}`);
 						return null;
 					});
+					if (res) {
+						console.log('[Tools] Tool created successfully:', tool.id);
+					}
 				}
 
 				toast.success($i18n.t('Tool imported successfully'));
 				tools.set(await getTools(localStorage.token));
+				console.log('[Tools] Tools store updated after import');
 			};
 
 			reader.readAsText(importFiles[0]);

@@ -24,38 +24,75 @@
 	let mounted = false;
 
 	const handleKeyDown = (event: KeyboardEvent) => {
+		console.log('[ConfirmDialog] Key down event:', event.key);
 		if (event.key === 'Escape') {
-			console.log('Escape');
+			console.log('[ConfirmDialog] Escape key pressed, closing dialog');
 			show = false;
 		}
 
 		if (event.key === 'Enter') {
-			console.log('Enter');
+			console.log('[ConfirmDialog] Enter key pressed, confirming action');
 			confirmHandler();
 		}
 	};
 
 	const confirmHandler = async () => {
+		console.log('[ConfirmDialog] Starting confirmHandler');
+		console.log('[ConfirmDialog] Current state:', {
+			show,
+			title,
+			message,
+			input,
+			inputValue,
+			hasOnConfirm: typeof onConfirm === 'function'
+		});
+
 		show = false;
-		await onConfirm();
-		dispatch('confirm', inputValue);
+		console.log('[ConfirmDialog] Dialog hidden');
+
+		try {
+			console.log('[ConfirmDialog] Calling onConfirm handler');
+			await onConfirm();
+			console.log('[ConfirmDialog] onConfirm handler completed');
+
+			console.log('[ConfirmDialog] Dispatching confirm event with value:', inputValue);
+			dispatch('confirm', inputValue);
+			console.log('[ConfirmDialog] Confirm event dispatched');
+		} catch (error) {
+			console.error('[ConfirmDialog] Error in confirmHandler:', error);
+			throw error;
+		}
 	};
 
 	onMount(() => {
+		console.log('[ConfirmDialog] Component mounted');
+		console.log('[ConfirmDialog] Initial props:', {
+			show,
+			title,
+			message,
+			input,
+			hasInputValue: !!inputValue,
+			hasOnConfirm: typeof onConfirm === 'function'
+		});
 		mounted = true;
 	});
 
 	$: if (mounted) {
+		console.log('[ConfirmDialog] Show state changed:', show);
 		if (show && modalElement) {
+			console.log('[ConfirmDialog] Dialog shown, attaching to body');
+			console.log('[ConfirmDialog] Modal element:', modalElement);
 			document.body.appendChild(modalElement);
 
 			window.addEventListener('keydown', handleKeyDown);
 			document.body.style.overflow = 'hidden';
+			console.log('[ConfirmDialog] Event listeners attached');
 		} else if (modalElement) {
+			console.log('[ConfirmDialog] Dialog hidden, cleaning up');
 			window.removeEventListener('keydown', handleKeyDown);
 			document.body.removeChild(modalElement);
-
 			document.body.style.overflow = 'unset';
+			console.log('[ConfirmDialog] Event listeners removed');
 		}
 	}
 </script>
