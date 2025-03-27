@@ -470,6 +470,7 @@
 		let backendConfig = null;
 		try {
 			backendConfig = await getBackendConfig();
+			console.log('Backend config:', backendConfig);
 			if (import.meta.env.DEV) {
 				console.log('Backend config:', backendConfig);
 			}

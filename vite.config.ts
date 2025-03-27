@@ -31,7 +31,8 @@ export default defineConfig({
 		})
 	],
 	define: {
-		APP_VERSION: JSON.stringify(process.env.npm_package_version),
+		// APP_VERSION: JSON.stringify(process.env.npm_package_version),
+		APP_VERSION: undefined,
 		APP_BUILD_HASH: JSON.stringify(process.env.APP_BUILD_HASH || 'dev-build')
 	},
 	build: {
