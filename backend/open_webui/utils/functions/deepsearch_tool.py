@@ -6,6 +6,9 @@ import aiohttp
 import time
 from bs4 import BeautifulSoup
 import asyncio
+from open_webui.retrieval.utils import query_doc
+from open_webui.retrieval.vector.connector import VECTOR_DB_CLIENT
+
 
 #nest_asyncio.apply()
 import uvloop
@@ -13,12 +16,11 @@ import uvloop
 dotenv.load_dotenv('open_webui/utils/functions/.env')
 ALBERT_KEY = os.getenv('ALBERT_KEY')
 ALBERT_URL = os.getenv('ALBERT_URL')
-print("##############################")
-print(ALBERT_KEY)
-print(ALBERT_URL)
-print("##############################")
 
 BRAVE_KEY =  os.getenv('BRAVE_KEY')
+COLLECTIONS = os.getenv('COLLECTIONS')
+
+print("COLLECTIONS : ", COLLECTIONS)
 
 response = requests.get(url=f"{ALBERT_URL}/collections", headers={"Authorization": f"Bearer {ALBERT_KEY}"})
 collections_dict = {}
@@ -27,14 +29,31 @@ for stuff in response.json()['data']:
 collection_names = list(collections_dict.keys())
 
 
-async def search_api(prompt: str, k: int=5)-> list:
+async def search_api(request, collections, query, user):
+    print("REQUEST : ", request)
+    print("COLLECTIONS : ", collections)
+    print("QUERY : ", query)
+    print("USER : ", user)
+
+    query_embedding = request.app.state.EMBEDDING_FUNCTION(
+                            query, user=user
+                        )
+    results = []    
+    for collection in collections:
+        results_tmp = query_doc(collection, query_embedding, 5, user)
+        results += results_tmp.documents[0]
+    print("\n\n\n\n\nRESULTS : ", results)
+    return results
+
+async def search_api_albert(prompt: str, k: int=5)-> list:
     """
     Cet outil permet de chercher des bouts de documents sur le travail et le droit en france.
 
     Args:
         prompt: les mots clés ou phrases a chercher sémantiquement pour trouver des documents (ex: prompt="president france")
     """
-    collections_wanted= ["fiches_vos_droits", "fiches_travail"] #["wikipedia_frames"]#["fiches_vos_droits_cam", "fiches_travail_cam"]
+    collections_wanted= os.getenv('COLLECTIONS').split(",") #["fiches_vos_droits", "fiches_travail"] #["wikipedia_frames"]#["fiches_vos_droits_cam", "fiches_travail_cam"]
+    print("COLLECTIONS WANTED : ", collections_wanted)
     docs = []
     names = []
     for coll in collections_wanted:
@@ -131,9 +150,9 @@ class AsyncHelper:
             "Content-Type": "application/json"
         }
         model = {
-            'END': REDACTOR_MODEL,
-            'ANALYTICS': ANALYTICS_MODEL
-        }.get(step, DEFAULT_MODEL)
+            'END': os.getenv('REDACTOR_MODEL'),
+            'ANALYTICS': os.getenv('ANALYTICS_MODEL')
+        }.get(step, os.getenv('DEFAULT_MODEL'))
 
         payload = {
             "model": model,
@@ -170,7 +189,7 @@ class AsyncHelper:
             {"role": "user", "content": f"Demande utilisateur: {user_query}\n\n{prompt}"}
         ]
         response = await AsyncHelper.call_openrouter_async(session, token_counter, messages, max_tokens=150)
-        print(response)
+        #print(response)
         if response:
             try:
                 search_queries = eval(response)
@@ -199,7 +218,7 @@ class AsyncHelper:
         }
         try:
             async with session.get(url, headers=headers, params=params) as resp:
-                print(5, resp)
+                #print(5, resp)
                 if resp.status == 200:
                     results = await resp.json()
                     links = [result.get('url') for result in results.get('web', {}).get('results', [])]
@@ -344,10 +363,16 @@ class AsyncHelper:
         return ''
 
     @staticmethod
-    async def process_query_api(session, token_counter, user_query, search, k, log, lang='fr'):
+    async def process_query_api(session, token_counter, user_query, search, k, log, lang='fr', collections=None, user=None, request=None):
         log.append(f"Fetching content from: {user_query}")
         try:
-            docs = await search_api(search, k)
+            #docs = await search_api(search, k, collection)
+            if collections:
+                docs = await search_api(request, collections, search, user)
+            else:
+                docs = await search_api_albert(search, k)
+
+
             
             if not docs:
                 print(f"No documents found for: {search}")
@@ -383,7 +408,7 @@ class AsyncHelper:
 
         return extracted_contexts
 
-async def async_research(user_query, internet, iteration_limit, prompt_suffix=None, max_tokens=1024, num_queries=2, k=5, lang='fr'):
+async def async_research(user_query, internet, iteration_limit, prompt_suffix=None, max_tokens=1024, num_queries=2, k=5, lang='fr', collections=None, user=None, request=None):
     start_time = time.time()
     aggregated_contexts = []
     aggregated_chunks = []
@@ -447,7 +472,7 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                         iteration_contexts = [res for res in link_results if res]
                 else:
                     print("LAUNCHING RAG SEARCH")
-                    search_api_tasks = [AsyncHelper.process_query_api(session, token_counter, user_query, search, k, log_messages, lang) for search in new_search_queries[:num_queries]]
+                    search_api_tasks = [AsyncHelper.process_query_api(session, token_counter, user_query, search, k, log_messages, lang, collections, user, request) for search in new_search_queries[:num_queries]]
                     useful_docs_lists = await asyncio.gather(*search_api_tasks)
                     
                     # Flatten and deduplicate
@@ -506,7 +531,7 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                     session, token_counter, user_query, aggregated_contexts, '', prompt_suffix, max_tokens, lang
                 )
             else:
-                final_report, final_prompt = str(aggregated_contexts) + "\n Voilà les documents que j'ai trouvé pour ta recherche, résumes ces informations dans final_answer en format markdown pour répondre à la question. Donnes les sources et liens intéressants si il y en a.", ""
+                final_report, final_prompt = str(aggregated_contexts) + "\n Voilà les documents que j'ai trouvé pour ta recherche, résumes ces informations dans final_answer en format markdown pour répondre à la question. Donnes les sources et liens intéressants si il y en a. CETTE REPONSE N'EST PAS COMPLETE, TU DOIS RESUMER CES INFORMATIONS DANS final_answer.", ""
             
             total_input_tokens, total_output_tokens = await token_counter.get_totals()
             elapsed_time = time.time() - start_time
@@ -514,7 +539,8 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
             log_messages.append(f"\nResearch completed in {elapsed_time:.2f} seconds.")
             log_messages.append(f"Total input tokens: {total_input_tokens}")
             log_messages.append(f"Total output tokens: {total_output_tokens}")
-            
+            print("FINAL REPORT : ", final_report)
+            print("DEFAUUUULLTTT : ", os.getenv('DEFAULT_MODEL'))
             return final_report, "\n".join(log_messages), final_prompt, total_input_tokens, total_output_tokens, aggregated_chunks, elapsed_time
             
     except Exception as e:
@@ -525,14 +551,14 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
         return f"An error occurred: {str(e)}", error_msg, "", 0, 0, [], time.time() - start_time
 
 # Model configuration
-DEFAULT_MODEL = 'meta-llama/Llama-3.1-8B-Instruct'#'meta-llama/Llama-3.3-70B-Instruct' #'meta-llama/Llama-3.1-8B-Instruct'
-ANALYTICS_MODEL = 'meta-llama/Llama-3.3-70B-Instruct'#'meta-llama/Llama-3.1-8B-Instruct' #'meta-llama/Llama-3.3-70B-Instruct' #'neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8'
-REDACTOR_MODEL = 'meta-llama/Llama-3.3-70B-Instruct' #'meta-llama/Llama-3.1-8B-Instruct' #'meta-llama/Llama-3.3-70B-Instruct' #'meta-llama/Llama-3.1-8B-Instruct'
+#DEFAULT_MODEL = 'meta-llama/Llama-3.1-8B-Instruct'#'meta-llama/Llama-3.3-70B-Instruct' #'meta-llama/Llama-3.1-8B-Instruct'
+#ANALYTICS_MODEL = 'meta-llama/Llama-3.3-70B-Instruct'#'meta-llama/Llama-3.1-8B-Instruct' #'meta-llama/Llama-3.3-70B-Instruct' #'neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8'
+#REDACTOR_MODEL = 'meta-llama/Llama-3.3-70B-Instruct' #'meta-llama/Llama-3.1-8B-Instruct' #'meta-llama/Llama-3.3-70B-Instruct' #'meta-llama/Llama-3.1-8B-Instruct'
 
 import asyncio
 import threading
 
-def run_research(user_query, internet, iteration_limit=10, prompt_suffix='', max_tokens=2048, num_queries=2, k=5, lang='fr'):
+def run_research(user_query, internet, iteration_limit=10, prompt_suffix='', max_tokens=2048, num_queries=2, k=5, lang='fr', collections=None, user=None, request=None):
     # Wrapper to run the async_research safely in a new thread.
     result_container = {}
 
@@ -543,7 +569,7 @@ def run_research(user_query, internet, iteration_limit=10, prompt_suffix='', max
         try:
             asyncio.set_event_loop(loop)
             result_container['result'] = loop.run_until_complete(
-                async_research(user_query, internet, iteration_limit, prompt_suffix, max_tokens, num_queries, k, lang)
+                async_research(user_query, internet, iteration_limit, prompt_suffix, max_tokens, num_queries, k, lang, collections, user, request)
             )
         finally:
             loop.close()
