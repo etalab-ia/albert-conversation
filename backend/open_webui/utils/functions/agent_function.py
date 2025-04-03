@@ -27,7 +27,11 @@ def parse_metadata(metadata):
 
     # No files in the metadata.
     if not files:
-        return ([], [])
+        return {
+            "collections": [],
+            "collections_descriptions": [],
+            "files": [],
+        }
 
     for item in files:
         # --- Case A: Item with a nested "file" key (new structure) ---
@@ -48,7 +52,7 @@ def parse_metadata(metadata):
             ) or file_obj.get("collection_name")
             if collection_name:
                 collections_set.add(collection_name)
-                description_set.add(file_obj.get("description"))
+                description_set.add(file_obj.get("description", ""))
 
         # --- Case B: Item that is a collection  ---
         elif item.get("type") == "collection":
