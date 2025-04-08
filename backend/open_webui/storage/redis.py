@@ -17,6 +17,12 @@ class RedisSessionMiddleware(SessionMiddleware):
         """Initialize the Redis Session Middleware."""
         self.redis = redis_client
         self.serializer = URLSafeSerializer(secret_key)
+        # Convert max_age to integer seconds if it's a string
+        if isinstance(max_age, str):
+            try:
+                max_age = int(max_age)
+            except ValueError:
+                max_age = 86400  # Default to 24 hours if conversion fails
         super().__init__(app, secret_key, session_cookie, max_age)
         log.debug(f"Initialized RedisSessionMiddleware with max_age: {max_age}")
 
@@ -45,7 +51,9 @@ class RedisSessionMiddleware(SessionMiddleware):
         """Write session data to Redis."""
         try:
             data = self.serializer.dumps(session_data)
-            self.redis.set(name=session_id, value=data, ex=self.max_age)
+            # Ensure max_age is an integer
+            max_age = int(self.max_age) if self.max_age else None
+            self.redis.set(name=session_id, value=data, ex=max_age)
             log.debug(f"Session data written for ID {session_id}: {session_data}")
         except Exception as e:
             log.error(f"Error writing session data: {str(e)}")

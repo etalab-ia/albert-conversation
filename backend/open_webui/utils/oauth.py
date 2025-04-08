@@ -113,19 +113,25 @@ class OAuthManager:
 
             # If any roles are found, check if they match the allowed or admin roles
             if oauth_roles:
-                # If role management is enabled, and matching roles are provided, use the roles
-                for allowed_role in oauth_allowed_roles:
-                    # If the user has any of the allowed roles, assign the role "user"
-                    if allowed_role in oauth_roles:
-                        log.debug("Assigned user the user role")
-                        role = "user"
-                        break
+                # First check for admin roles as they have highest priority
                 for admin_role in oauth_admin_roles:
-                    # If the user has any of the admin roles, assign the role "admin"
                     if admin_role in oauth_roles:
                         log.debug("Assigned user the admin role")
                         role = "admin"
                         break
+                
+                # If not admin, check for group-admin roles
+                if role != "admin" and "group-admin" in oauth_roles and "group-admin" in oauth_allowed_roles:
+                    log.debug("Assigned user the group-admin role")
+                    role = "group-admin"
+                
+                # If neither admin nor group-admin, check for regular user roles
+                if role != "admin" and role != "group-admin":
+                    for allowed_role in oauth_allowed_roles:
+                        if allowed_role in oauth_roles:
+                            log.debug("Assigned user the user role")
+                            role = "user"
+                            break
         else:
             if not user:
                 # If role management is disabled, use the default role for new users

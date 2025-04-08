@@ -33,6 +33,9 @@ router = APIRouter()
 async def get_groups(user=Depends(get_verified_user)):
     if user.role == "admin":
         return Groups.get_groups()
+    elif user.role == "group-admin":
+        # Group admins can see groups they are members of
+        return Groups.get_groups_by_member_id(user.id)
     else:
         return Groups.get_groups_by_member_id(user.id)
 
@@ -43,7 +46,12 @@ async def get_groups(user=Depends(get_verified_user)):
 
 
 @router.post("/create", response_model=Optional[GroupResponse])
-async def create_new_group(form_data: GroupForm, user=Depends(get_admin_user)):
+async def create_new_group(form_data: GroupForm, user=Depends(get_verified_user)):
+    if user.role not in ["admin", "group-admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ERROR_MESSAGES.ACTION_PROHIBITED,
+        )
     try:
         group = Groups.insert_new_group(user.id, form_data)
         if group:
@@ -67,14 +75,22 @@ async def create_new_group(form_data: GroupForm, user=Depends(get_admin_user)):
 
 
 @router.get("/id/{id}", response_model=Optional[GroupResponse])
-async def get_group_by_id(id: str, user=Depends(get_admin_user)):
+async def get_group_by_id(id: str, user=Depends(get_verified_user)):
     group = Groups.get_group_by_id(id)
-    if group:
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+    
+    if user.role == "admin":
+        return group
+    elif user.role == "group-admin" and user.id in group.user_ids:
         return group
     else:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.NOT_FOUND,
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ERROR_MESSAGES.ACTION_PROHIBITED,
         )
 
 
@@ -85,8 +101,21 @@ async def get_group_by_id(id: str, user=Depends(get_admin_user)):
 
 @router.post("/id/{id}/update", response_model=Optional[GroupResponse])
 async def update_group_by_id(
-    id: str, form_data: GroupUpdateForm, user=Depends(get_admin_user)
+    id: str, form_data: GroupUpdateForm, user=Depends(get_verified_user)
 ):
+    group = Groups.get_group_by_id(id)
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    if user.role != "admin" and (user.role != "group-admin" or user.id not in group.user_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ERROR_MESSAGES.ACTION_PROHIBITED,
+        )
+
     try:
         if form_data.user_ids:
             form_data.user_ids = Users.get_valid_user_ids(form_data.user_ids)
@@ -113,7 +142,20 @@ async def update_group_by_id(
 
 
 @router.delete("/id/{id}/delete", response_model=bool)
-async def delete_group_by_id(id: str, user=Depends(get_admin_user)):
+async def delete_group_by_id(id: str, user=Depends(get_verified_user)):
+    group = Groups.get_group_by_id(id)
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    if user.role != "admin" and (user.role != "group-admin" or user.id not in group.user_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ERROR_MESSAGES.ACTION_PROHIBITED,
+        )
+
     try:
         result = Groups.delete_group_by_id(id)
         if result:

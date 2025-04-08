@@ -59,10 +59,10 @@ class AuditLevel(str, Enum):
 
 class AuditLogger:
     """
-    A helper class that encapsulates audit logging functionality. It uses Loguru’s logger with an auditable binding to ensure that audit log entries are filtered correctly.
+    A helper class that encapsulates audit logging functionality. It uses Loguru's logger with an auditable binding to ensure that audit log entries are filtered correctly.
 
     Parameters:
-    logger (Logger): An instance of Loguru’s logger.
+    logger (Logger): An instance of Loguru's logger.
     """
 
     def __init__(self, logger: "Logger"):
@@ -191,11 +191,12 @@ class AuditLoggingMiddleware:
             await self._log_audit_entry(request, context)
 
     async def _get_authenticated_user(self, request: Request) -> UserModel:
-
         auth_header = request.headers.get("Authorization")
         assert auth_header
-        user = get_current_user(request, None, get_http_authorization_cred(auth_header))
-
+        # Get the authorization credentials first
+        auth_cred = get_http_authorization_cred(auth_header)
+        # Then call get_current_user with just the request and credentials
+        user = get_current_user(request, auth_cred)
         return user
 
     def _should_skip_auditing(self, request: Request) -> bool:

@@ -10,7 +10,7 @@ from open_webui.models.users import (
     UserSettings,
     UserUpdateForm,
 )
-
+from open_webui.models.groups import Groups
 
 from open_webui.socket.main import get_active_status_by_user_id
 from open_webui.constants import ERROR_MESSAGES
@@ -33,9 +33,27 @@ router = APIRouter()
 async def get_users(
     skip: Optional[int] = None,
     limit: Optional[int] = None,
-    user=Depends(get_admin_user),
+    user=Depends(get_verified_user),
 ):
-    return Users.get_users(skip, limit)
+    if user.role == "admin":
+        return Users.get_users(skip, limit)
+    elif user.role == "group-admin":
+        # Get all groups where the user is a member
+        user_groups = Groups.get_groups_by_member_id(user.id)
+        # Get all users from these groups
+        all_users = {}  # Use dict instead of set
+        for group in user_groups:
+            for user_id in group.user_ids:
+                if user_id not in all_users:  # Only fetch if we haven't seen this user
+                    user_obj = Users.get_user_by_id(user_id)
+                    if user_obj:
+                        all_users[user_id] = user_obj
+        return list(all_users.values())
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ERROR_MESSAGES.ACTION_PROHIBITED,
+        )
 
 
 ############################
@@ -117,14 +135,47 @@ async def update_user_permissions(
 
 
 @router.post("/update/role", response_model=Optional[UserModel])
-async def update_user_role(form_data: UserRoleUpdateForm, user=Depends(get_admin_user)):
-    if user.id != form_data.id and form_data.id != Users.get_first_user().id:
-        return Users.update_user_role_by_id(form_data.id, form_data.role)
+async def update_user_role(form_data: UserRoleUpdateForm, user=Depends(get_verified_user)):
+    # Prevent users from modifying their own role
+    if user.id == form_data.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ERROR_MESSAGES.ACTION_PROHIBITED,
+        )
+    
+    # Prevent modifying the first user's role
+    if form_data.id == Users.get_first_user().id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ERROR_MESSAGES.ACTION_PROHIBITED,
+        )
 
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail=ERROR_MESSAGES.ACTION_PROHIBITED,
-    )
+    # Group admins can only set roles to 'user' or 'pending'
+    if user.role == "group-admin":
+        if form_data.role not in ["user", "pending"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ERROR_MESSAGES.ACTION_PROHIBITED,
+            )
+        # Group admins can only modify users in their groups
+        user_groups = Groups.get_groups_by_member_id(user.id)
+        target_user_found = False
+        for group in user_groups:
+            if form_data.id in group.user_ids:
+                target_user_found = True
+                break
+        if not target_user_found:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ERROR_MESSAGES.ACTION_PROHIBITED,
+            )
+    elif user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ERROR_MESSAGES.ACTION_PROHIBITED,
+        )
+
+    return Users.update_user_role_by_id(form_data.id, form_data.role)
 
 
 ############################
