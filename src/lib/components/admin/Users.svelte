@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { getContext, tick, onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -10,9 +10,18 @@
 	import UserList from './Users/UserList.svelte';
 	import Groups from './Users/Groups.svelte';
 
+	interface User {
+		id: string;
+		name: string;
+		email: string;
+		role: string;
+		profile_image_url: string;
+		last_active_at?: number;
+	}
+
 	const i18n = getContext('i18n');
 
-	let users = [];
+	let users: User[] = [];
 
 	let selectedTab = 'overview';
 	let loaded = false;
@@ -26,7 +35,7 @@
 	};
 
 	onMount(async () => {
-		if ($user?.role !== 'admin') {
+		if ($user?.role !== 'admin' && $user?.role !== 'group-admin') {
 			await goto('/');
 		} else {
 			users = await getUsers(localStorage.token);

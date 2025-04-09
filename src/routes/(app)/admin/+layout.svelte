@@ -12,8 +12,12 @@
 	let loaded = false;
 
 	onMount(async () => {
-		if ($user?.role !== 'admin') {
+		if ($user?.role !== 'admin' && $user?.role !== 'group-admin') {
 			await goto('/');
+		}
+		// Redirect group-admin to users section if they try to access other sections
+		if ($user?.role === 'group-admin' && !$page.url.pathname.includes('/admin/users')) {
+			await goto('/admin/users');
 		}
 		loaded = true;
 	});
@@ -27,10 +31,10 @@
 
 {#if loaded}
 	<div
-		class=" flex flex-col w-full h-screen max-h-[100dvh] transition-width duration-200 ease-in-out max-w-full"
+		class="flex flex-col w-full h-screen max-h-[100dvh] transition-width duration-200 ease-in-out max-w-full"
 	>
-		<nav class="   px-2.5 pt-1 backdrop-blur-xl drag-region">
-			<div class=" flex items-center gap-1">
+		<nav class="px-2.5 pt-1 backdrop-blur-xl drag-region">
+			<div class="flex items-center gap-1">
 				<div class="{$showSidebar ? 'md:hidden' : ''} flex flex-none items-center self-end">
 					<button
 						id="sidebar-toggle-button"
@@ -40,13 +44,13 @@
 						}}
 						aria-label="Toggle Sidebar"
 					>
-						<div class=" m-auto self-center">
+						<div class="m-auto self-center">
 							<DrawerOpen className="size-5" strokeWidth="2" />
 						</div>
 					</button>
 				</div>
 
-				<div class=" flex w-full">
+				<div class="flex w-full">
 					<div
 						class="flex gap-1 scrollbar-none overflow-x-auto w-fit text-center text-sm font-medium rounded-full bg-transparent pt-1"
 					>
@@ -57,32 +61,34 @@
 							href="/admin">{$i18n.t('Users')}</a
 						>
 
-						<a
-							class="min-w-fit rounded-full p-1.5 {$page.url.pathname.includes('/admin/evaluations')
-								? ''
-								: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
-							href="/admin/evaluations">{$i18n.t('Evaluations')}</a
-						>
+						{#if $user?.role === 'admin'}
+							<a
+								class="min-w-fit rounded-full p-1.5 {$page.url.pathname.includes('/admin/evaluations')
+									? ''
+									: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
+								href="/admin/evaluations">{$i18n.t('Evaluations')}</a
+							>
 
-						<a
-							class="min-w-fit rounded-full p-1.5 {$page.url.pathname.includes('/admin/functions')
-								? ''
-								: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
-							href="/admin/functions">{$i18n.t('Functions')}</a
-						>
+							<a
+								class="min-w-fit rounded-full p-1.5 {$page.url.pathname.includes('/admin/functions')
+									? ''
+									: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
+								href="/admin/functions">{$i18n.t('Functions')}</a
+							>
 
-						<a
-							class="min-w-fit rounded-full p-1.5 {$page.url.pathname.includes('/admin/settings')
-								? ''
-								: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
-							href="/admin/settings">{$i18n.t('Settings')}</a
-						>
+							<a
+								class="min-w-fit rounded-full p-1.5 {$page.url.pathname.includes('/admin/settings')
+									? ''
+									: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
+								href="/admin/settings">{$i18n.t('Settings')}</a
+							>
+						{/if}
 					</div>
 				</div>
 			</div>
 		</nav>
 
-		<div class=" pb-1 px-[16px] flex-1 max-h-[95vh] overflow-y-auto">
+		<div class="pb-1 px-[16px] flex-1 max-h-[95vh] overflow-y-auto">
 			<slot />
 		</div>
 	</div>

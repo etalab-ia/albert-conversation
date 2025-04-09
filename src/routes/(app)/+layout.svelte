@@ -61,7 +61,7 @@
 	onMount(async () => {
 		if ($user === undefined) {
 			await goto('/auth');
-		} else if (['user', 'admin'].includes($user.role)) {
+		} else if (['user', 'admin', 'group-admin'].includes($user.role)) {
 			try {
 				// Check if IndexedDB exists
 				DB = await openDB('Chats', 1);
@@ -254,7 +254,7 @@
 			<div class="flex items-center justify-center h-full">
 				<div class="loading">Loading...</div>
 			</div>
-		{:else if !['user', 'admin'].includes($user?.role)}
+		{:else if !['user', 'admin', 'group-admin'].includes($user?.role)}
 			<AccountPending />
 		{:else if localDBChats.length > 0}
 			<div class="fixed w-full flex z-50">

@@ -102,7 +102,7 @@
 	};
 
 	onMount(async () => {
-		if ($user?.role !== 'admin') {
+		if ($user?.role !== 'admin' && $user?.role !== 'group-admin') {
 			await goto('/');
 		} else {
 			await setGroups();
