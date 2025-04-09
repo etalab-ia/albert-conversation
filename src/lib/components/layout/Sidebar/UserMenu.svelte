@@ -113,7 +113,7 @@
 							}
 						}}
 					>
-						<div class=" self-center mr-3">
+						<div class="self-center mr-3">
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								fill="none"
@@ -129,9 +129,10 @@
 								/>
 							</svg>
 						</div>
-						<div class=" self-center truncate">{t('Playground')}</div>
+						<div class="self-center truncate">{t('Playground')}</div>
 					</a>
-
+				{/if}
+				{#if role === 'group-admin' || role === 'admin'}
 					<a
 						class="flex rounded-md py-2 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition"
 						href="/admin"
@@ -143,7 +144,7 @@
 							}
 						}}
 					>
-						<div class=" self-center mr-3">
+						<div class="self-center mr-3">
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								fill="none"
@@ -159,7 +160,7 @@
 								/>
 							</svg>
 						</div>
-						<div class=" self-center truncate">{t('Admin Panel')}</div>
+						<div class="self-center truncate">{t('Admin Panel')}</div>
 					</a>
 				{/if}
 
@@ -169,11 +170,11 @@
 					class="flex rounded-md py-2 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition"
 					on:click={async () => {
 						await userSignOut();
-					user.set(null);
+						user.set(null);
 
 						location.href = '/auth';
-	
-					show = false;
+
+						show = false;
 					}}
 				>
 					<div class=" self-center mr-3">

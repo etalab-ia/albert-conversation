@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { WEBUI_BASE_URL } from '$lib/constants';
 	import { WEBUI_NAME, config, user, showSidebar } from '$lib/stores';
 	import { goto } from '$app/navigation';
@@ -32,10 +32,20 @@
 
 	const i18n = getContext('i18n');
 
-	export let users = [];
+	interface User {
+		id: string;
+		name: string;
+		email: string;
+		role: string;
+		profile_image_url: string;
+		last_active_at: number;
+		[key: string]: string | number; // Allow string indexing
+	}
+
+	export let users: User[] = [];
 
 	let search = '';
-	let selectedUser = null;
+	let selectedUser: User | null = null;
 
 	let page = 1;
 
@@ -45,7 +55,31 @@
 	let showUserChatsModal = false;
 	let showEditUserModal = false;
 
-	const updateRoleHandler = async (id, role) => {
+	const handleRoleChange = (user: User) => {
+		const currentUserRole = $user?.role;
+		
+		if (currentUserRole === 'group-admin') {
+			// Group admins can only toggle between user and pending
+			if (user.role === 'pending') {
+				updateRoleHandler(user.id, 'user');
+			} else if (user.role === 'user') {
+				updateRoleHandler(user.id, 'pending');
+			}
+		} else {
+			// Admin role can change to any role
+			if (user.role === 'user') {
+				updateRoleHandler(user.id, 'group-admin');
+			} else if (user.role === 'group-admin') {
+				updateRoleHandler(user.id, 'admin');
+			} else if (user.role === 'pending') {
+				updateRoleHandler(user.id, 'user');
+			} else {
+				updateRoleHandler(user.id, 'pending');
+			}
+		}
+	};
+
+	const updateRoleHandler = async (id: string, role: string) => {
 		const res = await updateUserRole(localStorage.token, id, role).catch((error) => {
 			toast.error(`${error}`);
 			return null;
@@ -56,7 +90,7 @@
 		}
 	};
 
-	const deleteUserHandler = async (id) => {
+	const deleteUserHandler = async (id: string) => {
 		const res = await deleteUserById(localStorage.token, id).catch((error) => {
 			toast.error(`${error}`);
 			return null;
@@ -66,10 +100,10 @@
 		}
 	};
 
-	let sortKey = 'created_at'; // default sort key
-	let sortOrder = 'asc'; // default sort order
+	let sortKey = 'name';
+	let sortOrder: 'asc' | 'desc' = 'asc';
 	console.log('user', $user);
-	function setSortKey(key) {
+	function setSortKey(key: string) {
 		if (sortKey === key) {
 			sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
 		} else {
@@ -307,6 +341,7 @@
 						{/if}
 					</div>
 				</th>
+
 				<th
 					scope="col"
 					class="px-3 py-1.5 cursor-pointer select-none"
@@ -363,18 +398,10 @@
 					<td class="px-3 py-1 min-w-[7rem] w-28">
 						<button
 							class=" translate-y-0.5"
-							on:click={() => {
-								if (user.role === 'user') {
-									updateRoleHandler(user.id, 'admin');
-								} else if (user.role === 'pending') {
-									updateRoleHandler(user.id, 'user');
-								} else {
-									updateRoleHandler(user.id, 'pending');
-								}
-							}}
+							on:click={() => handleRoleChange(user)}
 						>
 							<Badge
-								type={user.role === 'admin' ? 'info' : user.role === 'user' ? 'success' : 'muted'}
+								type={user.role === 'admin' ? 'info' : user.role === 'group-admin' ? 'warning' : user.role === 'user' ? 'success' : 'muted'}
 								content={$i18n.t(user.role)}
 							/>
 						</button>

@@ -26,6 +26,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 from authlib.oidc.core import UserInfo
 import requests
+
 logging.getLogger("passlib").setLevel(logging.ERROR)
 
 log = logging.getLogger(__name__)
@@ -44,9 +45,7 @@ def verify_signature(payload: str, signature: str) -> bool:
     Verifies the HMAC signature of the received payload.
     """
     try:
-        expected_signature = base64.b64encode(
-            hmac.new(TRUSTED_SIGNATURE_KEY, payload.encode(), hashlib.sha256).digest()
-        ).decode()
+        expected_signature = base64.b64encode(hmac.new(TRUSTED_SIGNATURE_KEY, payload.encode(), hashlib.sha256).digest()).decode()
 
         # Compare securely to prevent timing attacks
         return hmac.compare_digest(expected_signature, signature)
@@ -91,9 +90,7 @@ def get_license_data(app, key):
                         setattr(app.state, "LICENSE_METADATA", v)
                 return True
             else:
-                log.error(
-                    f"License: retrieval issue: {getattr(res, 'text', 'unknown error')}"
-                )
+                log.error(f"License: retrieval issue: {getattr(res, 'text', 'unknown error')}")
         except Exception as ex:
             log.exception(f"License: Uncaught Exception: {ex}")
     return False
@@ -152,7 +149,10 @@ def get_http_authorization_cred(auth_header: str):
         raise ValueError(ERROR_MESSAGES.INVALID_TOKEN)
 
 
-async def get_current_user(request: Request, background_tasks: BackgroundTasks,):
+async def get_current_user(
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -191,6 +191,6 @@ async def get_verified_user(user=Depends(get_current_user)):
 
 
 async def get_admin_user(user=Depends(get_current_user)):
-    if not user or user.role != "admin":
+    if not user or user.role != "admin" and user.role != "group-admin":
         raise HTTPException(401, "Admin privileges required")
     return user
