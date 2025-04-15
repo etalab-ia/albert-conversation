@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-from open_webui.utils.functions.agent1 import create_tools, sys_prompt
 import json
 import time
 import sys
@@ -11,6 +10,7 @@ from types import SimpleNamespace
 from smolagents.agents import CodeAgent
 import os
 from typing import Optional, List
+import numpy as np
 
 
 # Import required functions from the middleware module
@@ -114,33 +114,10 @@ def serialize_content_blocks(content_blocks, raw=False):
     content = ""
 
     for block in content_blocks:
+        if not block:
+            return
         if block["type"] == "text":
             content = f"{content}{block['content'].strip()}\n"
-        elif block["type"] == "tool_calls":
-            attributes = block.get("attributes", {})
-            block_content = block.get("content", [])
-            results = block.get("results", [])
-            if results:
-                result_display_content = ""
-                for result in results:
-                    tool_call_id = result.get("tool_call_id", "")
-                    tool_name = ""
-                    for tool_call in block_content:
-                        if tool_call.get("id", "") == tool_call_id:
-                            tool_name = tool_call.get("function", {}).get("name", "")
-                            break
-                    result_display_content = f"{result_display_content}\n> {tool_name}: {result.get('content', '')}"
-
-                if not raw:
-                    content = f'{content}\n<details type="tool_calls" done="true" content="{html.escape(json.dumps(block_content))}" results="{html.escape(json.dumps(results))}">\n<summary>Tool Executed</summary>\n{result_display_content}\n</details>\n'
-            else:
-                tool_calls_display_content = ""
-                for tool_call in block_content:
-                    tool_calls_display_content = f"{tool_calls_display_content}\n> Executing {tool_call.get('function', {}).get('name', '')}"
-
-                if not raw:
-                    content = f'{content}\n<details type="tool_calls" done="true" content="{html.escape(json.dumps(block_content))}">\n<summary>Tool Executing...</summary>\n{tool_calls_display_content}\n</details>\n'
-
         elif block["type"] == "reasoning":
             reasoning_display_content = "\n".join(
                 (f"> {line}" if not line.startswith(">") else line)
@@ -158,33 +135,7 @@ def serialize_content_blocks(content_blocks, raw=False):
                 if raw:
                     content = f'{content}\n<{block["start_tag"]}>{block["content"]}<{block["end_tag"]}>\n'
                 else:
-                    content = f'{content}\n<details type="reasoning" done="true">\n<summary>Step {block.get("step_number", "x")}</summary>\n{reasoning_display_content}\n</details>\n'
-
-        elif block["type"] == "code_interpreter":
-            attributes = block.get("attributes", {})
-            output = block.get("output", None)
-            lang = attributes.get("lang", "")
-
-            content_stripped, original_whitespace = split_content_and_whitespace(
-                content
-            )
-            if is_opening_code_block(content_stripped):
-                content = content_stripped.rstrip("`").rstrip() + original_whitespace
-            else:
-                content = content_stripped + original_whitespace
-
-            if output:
-                output = html.escape(json.dumps(output))
-
-                if raw:
-                    content = f'{content}\n<code_interpreter type="code" lang="{lang}">\n{block["content"]}\n</code_interpreter>\n```output\n{output}\n```\n'
-                else:
-                    content = f'{content}\n<details type="code_interpreter" done="true" output="{output}">\n<summary>Analyzed</summary>\n```{lang}\n{block["content"]}\n```\n</details>\n'
-            else:
-                if raw:
-                    content = f'{content}\n<code_interpreter type="code" lang="{lang}">\n{block["content"]}\n</code_interpreter>\n'
-                else:
-                    content = f'{content}\n<details type="code_interpreter" done="true">\n<summary>Analyzing...</summary>\n```{lang}\n{block["content"]}\n```\n</details>\n'
+                    content = f'{content}\n<details type="reasoning" done="true" duration="{reasoning_duration}">\n<summary>Step {block.get("step_number", "x")}</summary>\n{reasoning_display_content}\n</details>\n'
 
         else:
             block_content = str(block["content"]).strip()
@@ -205,12 +156,13 @@ class Pipe:
         DESCRIPTION: str = Field(
             "Contient des informations intéressantes sur le travail et le droit en France. Base de données administrative."
         )
+        DEPTH: int = Field(default=5)
 
     def __init__(self):
         self.valves = self.Valves()
         # If set to true it will prevent default RAG pipeline
-        # self.file_handler = True
-        # self.citation = True
+        self.file_handler = True
+        self.citation = True
 
     async def pipe(
         self,
@@ -228,8 +180,14 @@ class Pipe:
         os.environ["SUPERVISOR_MODEL"] = self.valves.SUPERVISOR_MODEL
         os.environ["DEFAULT_MODEL"] = self.valves.DEFAULT_MODEL
         os.environ["COLLECTIONS"] = self.valves.COLLECTIONS
+        os.environ["ALBERT_URL"] = self.valves.ALBERT_URL
+        os.environ["ALBERT_KEY"] = self.valves.ALBERT_KEY
+
         session = requests.session()
         session.headers = {"Authorization": f"Bearer {self.valves.ALBERT_KEY}"}
+
+        # We have to wait until now to import this, so it can read the env vars
+        from open_webui.utils.functions.agent_bob import create_tools, sys_prompt
 
         def remove_consecutive_assistants(messages):
             filtered_messages = []
@@ -241,7 +199,7 @@ class Pipe:
                 last_role = msg["role"]
             return filtered_messages
 
-        def custom_model_albert(messages, stop_sequences=[]):  # "Task",'Observation']):
+        def custom_model_albert(messages, stop_sequences=[]):
             for message in messages:
                 if message["role"] == "tool-response":
                     message["role"] = "user"
@@ -271,12 +229,10 @@ class Pipe:
         description = " ".join(parse_metadata(__metadata__)["collections_descriptions"])
 
         if collections != []:
-            # collection = __metadata__["files"][0]["files"][0]["meta"]["collection_name"]
             prefix = "(APPELLE LE TOOL RAG)"
             description = ""
 
         else:
-            collection = None
             prefix = ""
             description = self.valves.DESCRIPTION
 
@@ -286,20 +242,27 @@ class Pipe:
             description,
             __user__,
             __request__,
+            __event_emitter__,
         )
+
+        n_depth_message = (
+            self.valves.DEPTH + 1 if self.valves.DEPTH % 2 == 0 else self.valves.DEPTH
+        )
+        conversation_history = str(body["messages"][-n_depth_message:-1])
 
         agent = CodeAgent(
             tools=tools,
             model=custom_model_albert,
             max_steps=5,
             verbosity_level=3,
-            prompt_templates={"system_prompt": sys_prompt},
+            prompt_templates={
+                "system_prompt": sys_prompt.replace(
+                    "{{conversation_history}}", conversation_history
+                )
+            },
         )
 
         try:
-            # Log the input for debugging purposes
-            print(body)  # This will print the configuration options and the input body
-
             # Create content blocks for intermediate steps
             content_blocks = []
 
@@ -336,8 +299,11 @@ class Pipe:
                         "type": "reasoning",
                         "content": step.model_output,
                         "step_number": step_number,
+                        "duration": np.round(step.duration, 2),
                     }
+                    print("LA ?")
                     cumulative_content = serialize_content_blocks([content_block])
+                    print("ICI ?")
 
                     # Emit ALL content blocks so far, including intermediate reasoning
                     await __event_emitter__(
@@ -364,13 +330,15 @@ class Pipe:
 
             # Serialize the **final state of all content blocks** (including all intermediate reasoning steps)
             final_content = serialize_content_blocks(content_blocks)
-
             if final_content and __event_emitter__:
                 await __event_emitter__(
                     {
                         "type": "message",
                         "data": {
-                            "content": final_step,
+                            "content": final_step.replace(
+                                "\nSi cette réponse convient, appelle juste final_answer(ta_variable) pour l'envoyer à l'utilisateur. Sinon continue les recherches ou pose une question à l'utilisateur.",
+                                "",
+                            ),
                             "done": True,  # Mark completion explicitly
                             "hidden": False,
                         },
@@ -378,14 +346,13 @@ class Pipe:
                 )
 
             # Return the final step for further processing
-            print("CONTEXTE")
-            print(body.get("rag_context", ""))
-            print(body)
-            print(__user__)
-            print(__request__)
-            print(__request__.state)
-            print("META")
-            print(__metadata__)
+            # print(body)
+            # print(__user__)
+            # print(__request__)
+            # print(__request__.state)
+            # print("META")
+            # print(__metadata__)
+            # print(sys_prompt.replace("{{conversation_history}}", conversation_history))
             return
         except Exception as e:
             print(e)

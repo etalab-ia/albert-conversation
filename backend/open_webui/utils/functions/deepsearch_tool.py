@@ -1,17 +1,16 @@
 import dotenv
 import os
 import requests
-import nest_asyncio
 import aiohttp
 import time
 from bs4 import BeautifulSoup
 import asyncio
 from open_webui.retrieval.utils import query_doc
 from open_webui.retrieval.vector.connector import VECTOR_DB_CLIENT
-
-
-#nest_asyncio.apply()
+import asyncio
+import threading
 import uvloop
+import re
 
 dotenv.load_dotenv('open_webui/utils/functions/.env')
 ALBERT_KEY = os.getenv('ALBERT_KEY')
@@ -20,13 +19,37 @@ ALBERT_URL = os.getenv('ALBERT_URL')
 BRAVE_KEY =  os.getenv('BRAVE_KEY')
 COLLECTIONS = os.getenv('COLLECTIONS')
 
-print("COLLECTIONS : ", COLLECTIONS)
-
 response = requests.get(url=f"{ALBERT_URL}/collections", headers={"Authorization": f"Bearer {ALBERT_KEY}"})
 collections_dict = {}
 for stuff in response.json()['data']:
     collections_dict[stuff['name']] = stuff['id']
 collection_names = list(collections_dict.keys())
+
+
+def extract_first_url(text):
+    """
+    Extracts the first URL found in a string.
+    
+    Args:
+        text (str): The string to search for URLs
+        
+    Returns:
+        str or None: The first URL found, or None if no URL is found
+    """
+    # Regular expression pattern to match URLs
+    # This pattern matches http, https, ftp URLs with various domain formats
+    url_pattern = re.compile(
+        r'https?://(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)',
+        re.IGNORECASE
+    )
+    
+    # Find the first match
+    match = url_pattern.search(text)
+    
+    if match:
+        return match.group(0)  # Return the matched URL
+    else:
+        return None
 
 
 async def search_api(request, collections, query, user):
@@ -52,7 +75,7 @@ async def search_api_albert(prompt: str, k: int=5)-> list:
     Args:
         prompt: les mots clés ou phrases a chercher sémantiquement pour trouver des documents (ex: prompt="president france")
     """
-    collections_wanted= os.getenv('COLLECTIONS').split(",") #["fiches_vos_droits", "fiches_travail"] #["wikipedia_frames"]#["fiches_vos_droits_cam", "fiches_travail_cam"]
+    collections_wanted= os.getenv('COLLECTIONS').split(",")
     print("COLLECTIONS WANTED : ", collections_wanted)
     docs = []
     names = []
@@ -74,9 +97,7 @@ async def search_api_albert(prompt: str, k: int=5)-> list:
             docs_coll.append((content, name, source, score))
         docs = docs + docs_coll
     docs = sorted(docs, key= lambda x : x[3], reverse=True)
-    #refs_ = [doc[2] for doc in docs]
     docs = [f"[{name}] {doc[2]} {doc[0].split('Extrait article :')[-1]}" for name, doc in zip(names,docs)]
-    #time.sleep(0.1)
     return docs[:k]
 
 
@@ -158,7 +179,7 @@ class AsyncHelper:
             "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": 0.1,
+            "temperature": 0,
         }
         try:
             async with session.post(url=f"{ALBERT_URL}/chat/completions", json=payload, headers=headers) as resp:
@@ -204,7 +225,7 @@ class AsyncHelper:
         return []
 
     @staticmethod
-    async def perform_brave_search_async(session, query, k=2):
+    async def perform_brave_search_async(session, query, k=2, num_queries=2):
         url = "https://api.search.brave.com/res/v1/web/search"
         headers = {
             "Accept": "application/json",
@@ -225,9 +246,9 @@ class AsyncHelper:
                     print("="*12)
                     print(links)
                     print("="*12)
-                    time.sleep(1.5)
-                    #await asyncio.sleep(1.5)  # Using asyncio.sleep
-                    return links[:k]  # Return k links instead of hardcoded 2
+                    if num_queries >1:
+                        time.sleep(0.5)
+                    return links[:k]
                 else:
                     text = await resp.text()
                     print(f"Brave search API error: {resp.status} - {text}")
@@ -408,7 +429,8 @@ class AsyncHelper:
 
         return extracted_contexts
 
-async def async_research(user_query, internet, iteration_limit, prompt_suffix=None, max_tokens=1024, num_queries=2, k=5, lang='fr', collections=None, user=None, request=None):
+
+async def async_research(user_query, internet, iteration_limit, prompt_suffix=None, max_tokens=1024, num_queries=2, k=5, lang='fr', collections=None, user=None, request=None, event_emitter=None):
     start_time = time.time()
     aggregated_contexts = []
     aggregated_chunks = []
@@ -416,7 +438,7 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
     log_messages = []
     iteration = 0
     token_counter = TokenCounter()
-
+    
     # Input validation
     if not user_query or not user_query.strip():
         return "Please provide a valid query.", "Error: Empty query", "", 0, 0, [], 0
@@ -446,11 +468,9 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                 
                 if internet:
                     print("LAUNCHING INTERNET SEARCH")
-                    #search_tasks = [AsyncHelper.perform_brave_search_async(session, query, k) for query in new_search_queries]
-                    #search_results = await asyncio.gather(*search_tasks)
                     search_results = []
                     for query in new_search_queries[:num_queries]:
-                        search_results.append(await AsyncHelper.perform_brave_search_async(session, query, k))
+                        search_results.append(await AsyncHelper.perform_brave_search_async(session, query, k, num_queries))
                     
                     unique_links = {}
                     for idx, links in enumerate(search_results):
@@ -470,6 +490,7 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                         ]
                         link_results = await asyncio.gather(*link_tasks)
                         iteration_contexts = [res for res in link_results if res]
+                        aggregated_chunks.extend([link for link in unique_links])
                 else:
                     print("LAUNCHING RAG SEARCH")
                     search_api_tasks = [AsyncHelper.process_query_api(session, token_counter, user_query, search, k, log_messages, lang, collections, user, request) for search in new_search_queries[:num_queries]]
@@ -503,11 +524,6 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                     print(f"No useful contexts found in iteration {iteration + 1}.")
                     log_messages.append(f"No useful contexts found in iteration {iteration + 1}.")
 
-                # Check if we have enough context or need more queries
-                #if len(aggregated_contexts) >= 5 or iteration >= iteration_limit - 1:
-                #    log_messages.append("Sufficient context gathered or reached iteration limit.")
-                #    break
-
                 if iteration_limit > 1:    
                     new_search_queries = await AsyncHelper.get_new_search_queries_async(session, token_counter, user_query, all_search_queries, aggregated_contexts, lang)
                 else:
@@ -526,7 +542,7 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                 iteration += 1
 
             log_messages.append("\nGenerating final report...")
-            if num_queries > 1:
+            if num_queries >= 1:
                 final_report, final_prompt = await AsyncHelper.generate_final_report_async(
                     session, token_counter, user_query, aggregated_contexts, '', prompt_suffix, max_tokens, lang
                 )
@@ -539,9 +555,28 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
             log_messages.append(f"\nResearch completed in {elapsed_time:.2f} seconds.")
             log_messages.append(f"Total input tokens: {total_input_tokens}")
             log_messages.append(f"Total output tokens: {total_output_tokens}")
-            print("FINAL REPORT : ", final_report)
-            print("DEFAUUUULLTTT : ", os.getenv('DEFAULT_MODEL'))
-            return final_report, "\n".join(log_messages), final_prompt, total_input_tokens, total_output_tokens, aggregated_chunks, elapsed_time
+
+            # Citation for the front
+            if event_emitter:
+                n_source = 0
+                for chunk in aggregated_chunks:
+                    n_source+=1
+                    if internet:
+                        name = chunk
+                    else:
+                        name = f"Source {n_source}"
+                    await event_emitter(
+                {
+                    "type": "citation",
+                    "data": {
+                        "document": [chunk],
+                        "metadata": [{"source": f"[Source {n_source}]({extract_first_url(chunk)})"}],
+                        "source": {"name": name},
+                    },
+                }
+            )
+
+            return final_report + "\nSi cette réponse convient, appelle juste final_answer(ta_variable) pour l'envoyer à l'utilisateur. Sinon continue les recherches ou pose une question à l'utilisateur.", "\n".join(log_messages), final_prompt, total_input_tokens, total_output_tokens, aggregated_chunks, elapsed_time
             
     except Exception as e:
         error_msg = f"Error during research: {str(e)}"
@@ -550,15 +585,7 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
         traceback.print_exc()
         return f"An error occurred: {str(e)}", error_msg, "", 0, 0, [], time.time() - start_time
 
-# Model configuration
-#DEFAULT_MODEL = 'meta-llama/Llama-3.1-8B-Instruct'#'meta-llama/Llama-3.3-70B-Instruct' #'meta-llama/Llama-3.1-8B-Instruct'
-#ANALYTICS_MODEL = 'meta-llama/Llama-3.3-70B-Instruct'#'meta-llama/Llama-3.1-8B-Instruct' #'meta-llama/Llama-3.3-70B-Instruct' #'neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8'
-#REDACTOR_MODEL = 'meta-llama/Llama-3.3-70B-Instruct' #'meta-llama/Llama-3.1-8B-Instruct' #'meta-llama/Llama-3.3-70B-Instruct' #'meta-llama/Llama-3.1-8B-Instruct'
-
-import asyncio
-import threading
-
-def run_research(user_query, internet, iteration_limit=10, prompt_suffix='', max_tokens=2048, num_queries=2, k=5, lang='fr', collections=None, user=None, request=None):
+def run_research(user_query, internet, iteration_limit=10, prompt_suffix='', max_tokens=2048, num_queries=2, k=5, lang='fr', collections=None, user=None, request=None, event_emitter=None):
     # Wrapper to run the async_research safely in a new thread.
     result_container = {}
 
@@ -569,7 +596,7 @@ def run_research(user_query, internet, iteration_limit=10, prompt_suffix='', max
         try:
             asyncio.set_event_loop(loop)
             result_container['result'] = loop.run_until_complete(
-                async_research(user_query, internet, iteration_limit, prompt_suffix, max_tokens, num_queries, k, lang, collections, user, request)
+                async_research(user_query, internet, iteration_limit, prompt_suffix, max_tokens, num_queries, k, lang, collections, user, request, event_emitter)
             )
         finally:
             loop.close()

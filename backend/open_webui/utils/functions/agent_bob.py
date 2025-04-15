@@ -1,8 +1,21 @@
-#from smolagents.prompts import CODE_SYSTEM_PROMPT
-## Au cas ou : smolagents.__version__ = 1.3.0
+from types import SimpleNamespace
+import time
+import dotenv
+import os
+import requests
+import re
+import json
+
+from open_webui.utils.functions.deepsearch_tool import run_research
+from smolagents import tool
+from typing import Optional
+from datetime import datetime
+
+## smolagents.__version__ = 1.3.0
+# System prompt for the main agent
 sys_prompt = """Tu es Albert, un assistant expert qui résout des tâches avec du code Python. 
 Tu aides les agents de l'état dans leur travail.
-Nous sommes en Janvier 2025.
+La date du jour est le """ + f"{datetime.now().strftime("%d/%m/%Y")}" + """.
 Suis ces étapes :
     "Thought:" Explique ta démarche et les outils nécessaires.
     "Code:" Écris du code (finissant par ```<end_code>).
@@ -21,6 +34,9 @@ Règles de code:
     N'appelles jamais un tool pour rien, si tu vois la réponse appelles directement final_answer.
     'final_answer' prend en argument un string, contenant ta réponse finale, claire précise et formattée en markdown.
     Si un tool te donne une réponse déjà complète, envoie la directement à final_answer. Ne réécris pas inutilement, inutile de modifier la réponse déjà complète.
+
+Résumé de l'historique des messages avec l'utilisateur (vide pour un début de conversation):
+{{conversation_history}}
 
 Outils disponibles :
 {%- for tool in tools.values() %}
@@ -101,71 +117,9 @@ Though ne doit être qu'une phrase, les détails vont dans les outils ou final_a
 Ne réécris jamais une réponse déjà complète par un outil, renvoie directement la variable à final_answer.
 Résous la tâche : tu gagneras $1 000 000 si tu réussis."""
 
-from types import SimpleNamespace
-import time
-import dotenv
-import os
-import requests
-import re
-import json
+print(sys_prompt)
 
-
-#dotenv.load_dotenv('.env')
-dotenv.load_dotenv('open_webui/utils/functions/.env')
-
-
-
-#SUPERVISOR_MODEL = 'meta-llama/Llama-3.3-70B-Instruct' #'meta-llama/Meta-Llama-3.1-8B-Instruct' #'meta-llama/Llama-3.3-70B-Instruct' #'neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8' #'mistralai/Mixtral-8x7B-Instruct-v0.1' #'meta-llama/Meta-Llama-3.1-70B-Instruct'
-
-#session = requests.session()
-#ALBERT_KEY = os.getenv('ALBERT_KEY')
-#ALBERT_URL = os.getenv('ALBERT_URL')
-
-
-#session.headers = {"Authorization": f"Bearer {ALBERT_KEY}"}
-
-
-#def remove_consecutive_assistants(messages):
-#    filtered_messages = []
-#    last_role = None
-#    for msg in messages:
-#        if msg["role"] == "assistant" and last_role == "assistant":
-#            continue  # Ignore consecutive assistant messages
-#        filtered_messages.append(msg)
-#        last_role = msg["role"]
-#    return filtered_messages
-#
-#def custom_model_albert(messages, stop_sequences=[]):#"Task",'Observation']):
-#    for message in messages:
-#        if message['role'] == 'tool-response':
-#            message['role'] = 'user'
-#            message['content'] = 'TOOL_RESPONSE: ' + str(message['content'])
-#    messages = remove_consecutive_assistants(messages)
-#    print(messages)
-#
-#    data = {
-#        "model": SUPERVISOR_MODEL,
-#        "messages":messages,
-#        "stream": False,
-#        "n": 1,
-#        "temperature": 0.1,
-#        "repetition_penalty": 1,
-#        "max_tokens":1024,
-#        "stop" : stop_sequences,
-#    }
-#    response = session.post(url=f"{ALBERT_URL}/chat/completions", json=data, timeout=100000)
-#    answer = response.json()['choices'][0]['message']
-#    return SimpleNamespace(**answer) #needed to have a 'json'
-
-
-#custom_model_albert(messages = [{'role': 'user', 'content': 'Hello, how are you?'}], stop_sequences=[])
-from open_webui.utils.functions.deepsearch_tool import run_research
-from smolagents.agents import ToolCallingAgent, CodeAgent
-from smolagents import tool
-from typing import Optional
-
-
-def create_tools(model_func, collections, description, user, request):
+def create_tools(model_func, collections, description, user, request, event_emitter):
     @tool
     def deep_search_internet(user_query: str) -> str:
         """
@@ -174,7 +128,7 @@ def create_tools(model_func, collections, description, user, request):
             user_query: the user query (str)
         """
         print("Searching internet...")
-        result = run_research(user_query, internet=True, iteration_limit=2, prompt_suffix='', max_tokens=2048, num_queries=3, k=3, lang='fr')[0]
+        result = run_research(user_query, internet=True, iteration_limit=2, prompt_suffix='', max_tokens=2048, num_queries=3, k=3, lang='fr', event_emitter=event_emitter)[0]
         print("Internet search completed. \nResults: \n", result)
         return result
 
@@ -188,7 +142,7 @@ def create_tools(model_func, collections, description, user, request):
             user_query: the user query (str)
         """
         print("Searching administratif...") 
-        result = run_research(user_query, internet=False, iteration_limit=2, prompt_suffix='', max_tokens=2048, num_queries=3, k=3, lang='fr', collections=collections, user=user, request=request)[0]
+        result = run_research(user_query, internet=False, iteration_limit=2, prompt_suffix='', max_tokens=2048, num_queries=3, k=3, lang='fr', collections=collections, user=user, request=request, event_emitter=event_emitter)[0]
         print("Administratif search completed. \nResults: \n", result)
         return result
     @tool
@@ -200,7 +154,7 @@ def create_tools(model_func, collections, description, user, request):
             user_query: the user query (str)
         """
         print("Searching internet...")  
-        result = run_research(user_query, internet=True, iteration_limit=2, prompt_suffix='Ignores les instructions précédentes, fais une réponse courte et concise qui répond à la question. L\'utilisateur ne veut pas de réponse détaillée avec des informations inutiles.', max_tokens=400, num_queries=1, k=2, lang='fr')[0]
+        result = run_research(user_query, internet=True, iteration_limit=2, prompt_suffix='Ignores les instructions précédentes, fais une réponse courte et concise qui répond à la question. L\'utilisateur ne veut pas de réponse détaillée avec des informations inutiles.', max_tokens=400, num_queries=1, k=2, lang='fr', event_emitter=event_emitter)[0]
         print("Internet search completed. \nResults: \n", result)
         return result
     @tool
@@ -213,7 +167,7 @@ def create_tools(model_func, collections, description, user, request):
             user_query: the user query (str)
         """
         print("Searching administratif...") 
-        report = run_research(user_query, internet=False, iteration_limit=2, prompt_suffix='Ignores les instructions précédentes, fais une réponse courte et concise qui répond à la question. L\'utilisateur ne veut pas de réponse détaillée avec des informations inutiles.', max_tokens=400, num_queries=1, k=5, lang='fr', collections=collections, user=user, request=request)[0]
+        report = run_research(user_query, internet=False, iteration_limit=2, prompt_suffix='Ignores les instructions précédentes, fais une réponse directe à la question. L\'utilisateur ne veut pas de réponse détaillée avec des informations inutiles. Donnes uniquement les détails importants. Donnes toujours tes sources directement dans le corps de ta réponse si il y en a, pas à la fin, en mettant [1], [2] etc au sein du texte suivi de [url 1](https://...) appelles bien tous les liens "url 1" etc, l\'ordre des sources doit être le même que dans ton contexte.', max_tokens=400, num_queries=1, k=5, lang='fr', collections=collections, user=user, request=request, event_emitter=event_emitter)[0]
 
         print("Administratif search completed. \nResults: \n", report)
         return report
@@ -243,4 +197,5 @@ def create_tools(model_func, collections, description, user, request):
 
     tools = [deep_search_internet, simple_search_internet, simple_search_rag, deep_search_rag, simple_response]
     return tools
+#Agent is now instanciated on the front    
 #agent = CodeAgent(tools=tools, model=custom_model_albert, max_steps=5, verbosity_level=3, prompt_templates={"system_prompt" : sys_prompt})
