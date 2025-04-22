@@ -1,5 +1,7 @@
 # Albert Conversation 👋
 
+[English below](#english)
+
 ![GitHub stars](https://img.shields.io/github/stars/etalab-ia/albert-conversation?style=social)
 ![GitHub forks](https://img.shields.io/github/forks/etalab-ia/albert-conversation?style=social)
 ![GitHub watchers](https://img.shields.io/github/watchers/etalab-ia/albert-conversation?style=social)
@@ -195,7 +197,9 @@ Des questions ? Suggestions ? Besoin d'aide ? Contactez-nous à : contact-albert
 ---
 Open WebUI a été créé par [Timothy Jaeryang Baek](https://github.com/tjbck)
 
+---
 
+## English
 **Albert Conversation is a fork of [Open WebUI](https://github.com/open-webui/open-webui) an [extensible](https://docs.openwebui.com/features/plugin/), feature-rich, and user-friendly self-hosted AI platform designed to operate entirely offline.** It supports various LLM runners like **Ollama** and **OpenAI-compatible APIs** like [Albert API](https://github.com/etalab-ia/albert-api), with **built-in inference engine** for RAG, making it a **powerful AI deployment solution**.
 
 ![Albert Conversation Demo](./demo.gif)
