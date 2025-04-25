@@ -9,7 +9,7 @@ import requests
 from types import SimpleNamespace
 from smolagents.agents import CodeAgent
 import os
-from typing import Optional, List, Literal
+from typing import Optional, List
 import numpy as np
 
 
@@ -156,8 +156,7 @@ class Pipe:
         DESCRIPTION: str = Field(
             "Contient des informations intéressantes sur le travail et le droit en France. Base de données administrative."
         )
-        MESSAGES_MEMORY: int = Field(default=5)
-        SHOW_CODE: bool = Field(default=True)
+        DEPTH: int = Field(default=5)
 
     def __init__(self):
         self.valves = self.Valves()
@@ -183,7 +182,6 @@ class Pipe:
         os.environ["COLLECTIONS"] = self.valves.COLLECTIONS
         os.environ["ALBERT_URL"] = self.valves.ALBERT_URL
         os.environ["ALBERT_KEY"] = self.valves.ALBERT_KEY
-        show_code = self.valves.SHOW_CODE
 
         session = requests.session()
         session.headers = {"Authorization": f"Bearer {self.valves.ALBERT_KEY}"}
@@ -227,16 +225,13 @@ class Pipe:
             answer = response.json()["choices"][0]["message"]
             return SimpleNamespace(**answer)  # needed to have a 'json'
 
-        # Detecting if user is attaching files or collections on the frontend
         collections = parse_metadata(__metadata__)["collections"]
         description = " ".join(parse_metadata(__metadata__)["collections_descriptions"])
 
-        # If user is attaching files or collections, we need to use the RAG tool
         if collections != []:
             prefix = "(APPELLE LE TOOL RAG)"
             description = ""
 
-        # If user is not attaching files or collections, we can use the Albert RAG
         else:
             prefix = ""
             description = self.valves.DESCRIPTION
@@ -249,11 +244,9 @@ class Pipe:
             __request__,
             __event_emitter__,
         )
-        # Messages memory
+
         n_depth_message = (
-            self.valves.MESSAGES_MEMORY + 1
-            if self.valves.MESSAGES_MEMORY % 2 == 0
-            else self.valves.MESSAGES_MEMORY
+            self.valves.DEPTH + 1 if self.valves.DEPTH % 2 == 0 else self.valves.DEPTH
         )
         conversation_history = str(body["messages"][-n_depth_message:-1])
 
@@ -265,7 +258,7 @@ class Pipe:
             prompt_templates={
                 "system_prompt": sys_prompt.replace(
                     "{{conversation_history}}", conversation_history
-                )
+                ) + "\n Refuse toutes questions non liées à de l'administratif, et invites l'utilisateur à utiliser un autre compagnon spécialisé si tu ne peux pas répondre. En cas de doute sur une question, demande à l'utilisateur de préciser sa demande."
             },
         )
 
@@ -302,21 +295,15 @@ class Pipe:
                     intermediate_steps.append(step)
 
                     # Serialize the current state of ALL content blocks
-                    if not show_code:
-                        content = step.model_output.split("Code:")[0].replace(
-                            "Thought: ", ""
-                        )
-                    else:
-                        content = step.model_output
-
                     content_block = {
                         "type": "reasoning",
-                        "content": content,
+                        "content": step.model_output,
                         "step_number": step_number,
                         "duration": np.round(step.duration, 2),
                     }
-
+                    print("LA ?")
                     cumulative_content = serialize_content_blocks([content_block])
+                    print("ICI ?")
 
                     # Emit ALL content blocks so far, including intermediate reasoning
                     await __event_emitter__(
@@ -333,7 +320,17 @@ class Pipe:
                 # Track the final step
                 final_step = step
 
-            if final_step and __event_emitter__:
+            # Add the final reasoning block or result
+            if content_blocks and content_blocks[-1]["type"] == "reasoning":
+                reasoning_end_time = time.time()
+                content_blocks[-1]["ended_at"] = reasoning_end_time
+                content_blocks[-1]["duration"] = int(
+                    reasoning_end_time - reasoning_start_time
+                )
+
+            # Serialize the **final state of all content blocks** (including all intermediate reasoning steps)
+            final_content = serialize_content_blocks(content_blocks)
+            if final_content and __event_emitter__:
                 await __event_emitter__(
                     {
                         "type": "message",

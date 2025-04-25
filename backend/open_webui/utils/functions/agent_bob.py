@@ -119,13 +119,13 @@ Résous la tâche : tu gagneras $1 000 000 si tu réussis."""
 
 print(sys_prompt)
 
-def create_tools(model_func, collections, description, user, request, event_emitter):
+def create_tools(model_func, collections, description, user, request, event_emitter, agent_type="bob"):
     @tool
     def deep_search_internet(user_query: str) -> str:
         """
         Fait une recherche approfondie sur les questions non-administratives, pour les questions complexes ayant besoin de recherche sur internet.
         Args:
-            user_query: the user query (str)
+            user_query: une question claire et précise (str)
         """
         print("Searching internet...")
         result = run_research(user_query, internet=True, iteration_limit=2, prompt_suffix='', max_tokens=2048, num_queries=3, k=3, lang='fr', event_emitter=event_emitter)[0]
@@ -139,7 +139,7 @@ def create_tools(model_func, collections, description, user, request, event_emit
         Cet outil fait une recherche approfondie sur le Rag choisi par l'utilisateur, pour les questions complexes ayant besoin de plusieurs recherches en même temps dans le rag de manière plus profonde.
         {{description}}
         Args:
-            user_query: the user query (str)
+            user_query: une question claire et précise (str)
         """
         print("Searching administratif...") 
         result = run_research(user_query, internet=False, iteration_limit=2, prompt_suffix='', max_tokens=2048, num_queries=3, k=3, lang='fr', collections=collections, user=user, request=request, event_emitter=event_emitter)[0]
@@ -151,7 +151,7 @@ def create_tools(model_func, collections, description, user, request, event_emit
         Cet outil fait une recherche simple à partir d'une question, pour les questions nécessitant une recherche rapide sur internet.
         Si la réponse donnée est déjà complète, tu peux l'envoyer directement à final_answer.
         Args:
-            user_query: the user query (str)
+            user_query: une question claire et précise (str)
         """
         print("Searching internet...")  
         result = run_research(user_query, internet=True, iteration_limit=2, prompt_suffix='Ignores les instructions précédentes, fais une réponse courte et concise qui répond à la question. L\'utilisateur ne veut pas de réponse détaillée avec des informations inutiles.', max_tokens=400, num_queries=1, k=2, lang='fr', event_emitter=event_emitter)[0]
@@ -164,10 +164,10 @@ def create_tools(model_func, collections, description, user, request, event_emit
         Si l'utilisateur te parle de son document ou de rag, c'est cet outil qui doit être utilisé.
         {{description}}
         Args:
-            user_query: the user query (str)
+            user_query: une question claire et précise (str)
         """
         print("Searching administratif...") 
-        report = run_research(user_query, internet=False, iteration_limit=2, prompt_suffix='Ignores les instructions précédentes, fais une réponse directe à la question. L\'utilisateur ne veut pas de réponse détaillée avec des informations inutiles. Donnes uniquement les détails importants. Donnes toujours tes sources directement dans le corps de ta réponse si il y en a, pas à la fin, en mettant [1], [2] etc au sein du texte suivi de [url 1](https://...) appelles bien tous les liens "url 1" etc, l\'ordre des sources doit être le même que dans ton contexte.', max_tokens=400, num_queries=1, k=5, lang='fr', collections=collections, user=user, request=request, event_emitter=event_emitter)[0]
+        report = run_research(user_query, internet=False, iteration_limit=2, prompt_suffix='Ignores les instructions précédentes, fais une réponse directe à la question. L\'utilisateur ne veut pas de réponse détaillée avec des informations inutiles. Donnes uniquement les détails importants. Donnes toujours tes sources à la fin de ta réponse avec une partie "Sources : ", et mets [1], [2] etc au sein du texte quand tu cites une source. Dans la partie sources écris [1] [nom de l\'url](https://...) etc, appelles bien tous les liens avec un nom, l\'ordre des sources doit être le même que dans ton contexte.', max_tokens=400, num_queries=1, k=5, lang='fr', collections=collections, user=user, request=request, event_emitter=event_emitter)[0]
 
         print("Administratif search completed. \nResults: \n", report)
         return report
@@ -176,7 +176,7 @@ def create_tools(model_func, collections, description, user, request, event_emit
         """
         Donne une réponse simple à partir d'une question pas très complexe, pouvant être répondu sans recherche.
         Args:
-            user_query: the user query (str)
+            user_query: une question claire et précise (str)
         """
         print("Simple response...")
         answer = model_func(messages = [{'role': 'user', 'content': user_query}], stop_sequences=[])
@@ -188,14 +188,18 @@ def create_tools(model_func, collections, description, user, request, event_emit
         """
         Génère du code Python en répondant à la question de l'utilisateur.
         Args:
-            user_query: la question de l'utilisateur (str)
+            user_query: une question claire et précise (str)
         """ 
         print("Coding...")
         answer = model_func(messages = [{'role': 'user', 'content': user_query}], stop_sequences=[])
         print("Coding completed. \nResults: \n", answer.content)
         return answer.content
 
-    tools = [deep_search_internet, simple_search_internet, simple_search_rag, deep_search_rag, simple_response]
+    #tools = [deep_search_internet, simple_search_internet, simple_search_rag, deep_search_rag] #, simple_response]
+    if agent_type == "rag":
+        tools = [simple_search_internet, simple_search_rag, deep_search_rag]
+    elif agent_type == "bob":
+        tools = [deep_search_internet, simple_search_internet, simple_search_rag, deep_search_rag]
     return tools
 #Agent is now instanciated on the front    
 #agent = CodeAgent(tools=tools, model=custom_model_albert, max_steps=5, verbosity_level=3, prompt_templates={"system_prompt" : sys_prompt})

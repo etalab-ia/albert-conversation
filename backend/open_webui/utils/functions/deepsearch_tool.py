@@ -77,6 +77,7 @@ async def search_api_albert(prompt: str, k: int=5)-> list:
     """
     collections_wanted= os.getenv('COLLECTIONS').split(",")
     print("COLLECTIONS WANTED : ", collections_wanted)
+    print("COLLECTIONS DICT : ", collections_dict)
     docs = []
     names = []
     for coll in collections_wanted:
@@ -84,7 +85,7 @@ async def search_api_albert(prompt: str, k: int=5)-> list:
         data = {"collections": [coll_id], "k": k, "prompt": prompt}
         response = requests.post(url=f"{ALBERT_URL}/search", json=data, headers={"Authorization": f"Bearer {ALBERT_KEY}"})
         docs_coll = []
-        #print(response.text)
+        print(response.text)
         for result in response.json()["data"]:
             content = result["chunk"]["content"]
             if len(content) < 150:
@@ -93,6 +94,7 @@ async def search_api_albert(prompt: str, k: int=5)-> list:
             names.append(name)
             score = result["score"]
             metadata_dict = result['chunk']['metadata']
+            print("METADATA DICT : ", metadata_dict)
             source =f"[{coll}] - " + " - ".join([f"{metadata_dict[stuff]}" for stuff in metadata_dict if stuff in ["titre", "title", "client", "url", "id_decision"]])
             docs_coll.append((content, name, source, score))
         docs = docs + docs_coll
@@ -143,7 +145,7 @@ class Prompts:
         return """Vous êtes un expert en rédaction de réponses de demande utilisateur. Soyez poli.
         Sur la base des contextes rassemblés ci-dessus et de la requête initiale, rédigez une réponse complete, 
         bien structurée en markdown et détaillée qui répond à la question de manière approfondie. Ne faites pas d'introduction, commencez tout de suite avec la réponse. Incluez des références sous la forme '[numero reference]' dans les paragraphes que vous rédigez qui renvoient aux références utilisées.
-        Incluez toutes les informations et conclusions utiles sans commentaires supplémentaires, ainsi que les noms d'articles et urls présents dans le contexte qui semble pertinents. Dans les références veillez a ne pas faire de doublons et a ne pas en avoir plus de 5 et priorisez les URLs et les titres. Commences avec la réponse directe. Détailles ensuite.
+        Incluez toutes les informations et conclusions utiles sans commentaires supplémentaires, ainsi que les noms d'articles et urls présents dans le contexte qui semble pertinents. Dans les références veillez a ne pas faire de doublons et a ne pas en avoir plus de 5 et priorisez les URLs et les titres. Commences avec la réponse sans titre ou introduction. Détailles ensuite.
         """
 
 class TokenCounter:
