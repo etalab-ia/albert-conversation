@@ -91,7 +91,7 @@ He “thinks” via Thought: comments, writes code in Code: blocks, inspects out
    - Tracks tokens via TokenCounter, logs timings & citations via event_emitter.
 
 ## 6. deep_search Tool System Tree
-
+```
 deep_search_*  
 ├─ run_research()  
 │   ├─ async_research()  
@@ -106,7 +106,7 @@ deep_search_*
 │   │   └─ generate_final_report_async  
 │   └─ TokenCounter & logging  
 └─ Tools expose run_research with different flags  
-
+```
 ## 7. Minimal Usage Examples
 
 ### 1. Simple web search
