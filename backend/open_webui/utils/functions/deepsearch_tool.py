@@ -6,8 +6,6 @@ import time
 from bs4 import BeautifulSoup
 import asyncio
 from open_webui.retrieval.utils import query_doc
-from open_webui.retrieval.vector.connector import VECTOR_DB_CLIENT
-import asyncio
 import threading
 import uvloop
 import re
@@ -25,7 +23,7 @@ for stuff in response.json()['data']:
     collections_dict[stuff['name']] = stuff['id']
 collection_names = list(collections_dict.keys())
 
-
+# For the citations
 def extract_first_url(text):
     """
     Extracts the first URL found in a string.
@@ -73,7 +71,7 @@ async def search_api_albert(prompt: str, k: int=5)-> list:
     Cet outil permet de chercher des bouts de documents sur le travail et le droit en france.
 
     Args:
-        prompt: les mots clés ou phrases a chercher sémantiquement pour trouver des documents (ex: prompt="president france")
+        prompt: les mots clés ou phrases a chercher sémantiquement pour trouver des documents (ex: prompt="procuration vote france")
     """
     collections_wanted= os.getenv('COLLECTIONS').split(",")
     print("COLLECTIONS WANTED : ", collections_wanted)
@@ -85,7 +83,7 @@ async def search_api_albert(prompt: str, k: int=5)-> list:
         data = {"collections": [coll_id], "k": k, "prompt": prompt}
         response = requests.post(url=f"{ALBERT_URL}/search", json=data, headers={"Authorization": f"Bearer {ALBERT_KEY}"})
         docs_coll = []
-        print(response.text)
+        #print(response.text)
         for result in response.json()["data"]:
             content = result["chunk"]["content"]
             if len(content) < 150:
@@ -94,7 +92,7 @@ async def search_api_albert(prompt: str, k: int=5)-> list:
             names.append(name)
             score = result["score"]
             metadata_dict = result['chunk']['metadata']
-            print("METADATA DICT : ", metadata_dict)
+            #print("METADATA DICT : ", metadata_dict)
             source =f"[{coll}] - " + " - ".join([f"{metadata_dict[stuff]}" for stuff in metadata_dict if stuff in ["titre", "title", "client", "url", "id_decision"]])
             docs_coll.append((content, name, source, score))
         docs = docs + docs_coll
@@ -135,7 +133,8 @@ class Prompts:
             return """You are an analytical research assistant. Based on the initial query, the searches conducted so far, and the contexts extracted from web pages, determine if further research is necessary to fully answer the user's query. If the context allows answering the user, respond []. Do not conduct unnecessary research. If the extracted contexts are empty or if further research is absolutely necessary, provide up to two new search queries in the form of a Python list (e.g., ["new query1", "new query2"]). If no further research is needed, respond only with an empty list []. Display only a Python list or [] without any additional text."""
         return """Vous êtes un assistant de recherche analytique. Sur la base de la requête initiale, des recherches effectuées jusqu'à présent et des contextes extraits des pages web, déterminez si des recherches supplémentaires sont nécessaires. 
         Si le contexte permet de répondre à l'utilisateur, répondez []. Ne fais pas de recherches inutiles.
-        Si les contextes extraits sont vides ou si des recherches supplémentaires sont absolument nécessaires, fournissez jusqu'à deux nouvelles requêtes de recherche sous forme de liste Python (par exemple, ["new query1", "new query2"]). Si aucune recherche supplémentaire n'est nécessaire répondez uniquement avec une liste vide []. N'affichez qu'une liste Python ou []  sans aucun texte supplémentaire.
+        Si les contextes extraits sont vides ou si des recherches supplémentaires sont absolument nécessaires, fournissez jusqu'à deux nouvelles requêtes de recherche sous forme de liste Python (par exemple, ["new query1", "new query2"]). Si aucune recherche supplémentaire n'est nécessaire répondez uniquement avec une liste vide []. N'affichez qu'une liste Python ou une liste vide[] sans aucun texte supplémentaire.
+        Ne fais jamais de recherches supplémentaires si le contexte est suffisant pour répondre à la question.
         """
 
     @staticmethod
@@ -544,7 +543,7 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                 iteration += 1
 
             log_messages.append("\nGenerating final report...")
-            if num_queries >= 1:
+            if num_queries > 1:
                 final_report, final_prompt = await AsyncHelper.generate_final_report_async(
                     session, token_counter, user_query, aggregated_contexts, '', prompt_suffix, max_tokens, lang
                 )

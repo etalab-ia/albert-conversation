@@ -136,36 +136,40 @@ The script `agent_function.py` is pasted into the OpenWebUI "Functions" panel, w
 ## Diagram of the pipeline
 
 ```mermaid
-flowchart LR
-  A[User Request] --> B[OpenWebUI “Functions”]
-  B --> C[Pipe.pipe]
-  C --> D[parse_metadata]
-  C --> E[set env vars]
-  C --> F[create_tools]
-  F --> G[CodeAgent]
-  G --> H{Tool Selection}
-  H --> I[simple_response]
-  H --> J[coder]
-  H --> K[simple_search_internet]
-  H --> L[deep_search_internet]
-  H --> M[simple_search_rag]
-  H --> N[deep_search_rag]
-  K & L & M & N --> O[run_research]
-  subgraph Deep-Search Pipeline
+flowchart TB
+    A[User Request] --> B[OpenWebUI “Functions”]
+    B --> C[Pipe.pipe]
+    C --> D[parse_metadata]
+    C --> E[set env vars]
+    C --> F[create_tools]
+    F --> G[CodeAgent]
+    G --> H{Tool Selection}
+    H --> I[Annuaire]
+    H --> J[Coder]
+    H --> K[simple_search_internet]
+    H --> L[deep_search_internet]
+    H --> M[simple_search_rag]
+    H --> N[deep_search_rag]
+    K & L & M & N --> O[run_research]
+    subgraph Deep-Search Pipeline
     O --> P[1.Query Generation]
-    O --> Q[2.Document Retrieval]
-    O --> R[3.Relevance Eval.]
-    O --> S[4.Context Extraction]
-    O --> T[5.Analytics & Iteration]
-    O --> U[6.Final Report]
-  end
+    P --> Q[2.Document Retrieval]
+    Q --> R[3.Relevance Eval.]
+    R --> S[4.Context Extraction]
+    S --> T[5.Analytics & Iteration]
+    end
+    T --> P
+    T --> U[6.Final Report]
   U --> V
   G --> V[final_answer]
+  I --> V[final_answer]
+  J --> V[final_answer]
   V --> W[Response to User]
 ```
 
 # Observed issues
 
+## Streaming issues
 Using the built-in event emitter to stream intermediate “Thought”/“Code” blocks back to the frontend is not working in a streaming way. 
 The DeepSearch tool being async, streaming intermediate steps using the event emitter is not working as expected, as every intermediate event will only be sent after the final answer is generated. 
 Event emitter is used in the DeepSearch tool anyway to be able to show the chunks for the RAG part, but intermediate steps can't be streamed.
@@ -174,3 +178,15 @@ links may link to the issue:
 - https://github.com/huggingface/smolagents/issues/334
 - https://github.com/open-webui/open-webui/discussions/8461#discussioncomment-12555203
 - https://github.com/open-webui/pipelines/issues/225
+
+## Timeout
+When the agent takes too long to answer, the request will likely be cancelled by the server and not be displayed on the frontend even if the agent manage to generate an answer.
+
+## Sources handling
+When using RAG, the agent is prompted to insert its sources at the end of its answer, but sometime names and urls of sources are not correctly displayed and may be mixed up.
+Likewise, sources detected by the openwebui front are sometimes mixed up as well.
+
+### Potential solutions:
+- Standardize the source format with clear delimiters between name and URL
+- Implement a post-processing step to validate and correct source formatting
+- Investigate the source parser on the frontend and see how it works

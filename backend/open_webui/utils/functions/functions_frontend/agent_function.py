@@ -1,19 +1,22 @@
+
+"""
+This script is used to create a pipe that can be used to call the agent function from the frontend.
+Copy and paste this directly onto the frontend in the admin panel.
+"""
+
 from pydantic import BaseModel, Field
-import json
-import time
-import sys
 import smolagents
-import html
-import re
 import requests
 from types import SimpleNamespace
 from smolagents.agents import CodeAgent
 import os
-from typing import Optional, List
 import numpy as np
 
+# Can be empty
+ADDON_INSTRUCTION = "\n Refuse toutes questions non liées à de l'administratif, et invites l'utilisateur à utiliser un autre compagnon spécialisé si tu ne peux pas répondre. En cas de doute sur une question, demande à l'utilisateur de préciser sa demande."
 
-# Import required functions from the middleware module
+
+# Parsing request metadata to get potential files or collections attached
 def parse_metadata(metadata):
     """
     Given a metadata dict, returns a tuple:
@@ -110,36 +113,18 @@ def parse_metadata(metadata):
     }
 
 
-def serialize_content_blocks(content_blocks, raw=False):
+def serialize_content_blocks(content_blocks):
     content = ""
 
     for block in content_blocks:
         if not block:
             return
-        if block["type"] == "text":
-            content = f"{content}{block['content'].strip()}\n"
-        elif block["type"] == "reasoning":
-            reasoning_display_content = "\n".join(
-                (f"> {line}" if not line.startswith(">") else line)
-                for line in block["content"].splitlines()
-            )
-
-            reasoning_duration = block.get("duration", None)
-
-            if reasoning_duration is not None and reasoning_display_content:
-                if raw:
-                    content = f'{content}\n<{block["start_tag"]}>{block["content"]}<{block["end_tag"]}>\n'
-                else:
-                    content = f'{content}\n<details type="reasoning" done="true" duration="{reasoning_duration}">\n<summary>Thought for {reasoning_duration} seconds</summary>\n{reasoning_display_content}\n</details>\n'
-            else:
-                if raw:
-                    content = f'{content}\n<{block["start_tag"]}>{block["content"]}<{block["end_tag"]}>\n'
-                else:
-                    content = f'{content}\n<details type="reasoning" done="true" duration="{reasoning_duration}">\n<summary>Step {block.get("step_number", "x")}</summary>\n{reasoning_display_content}\n</details>\n'
-
-        else:
-            block_content = str(block["content"]).strip()
-            content = f"{content}{block['type']}: {block_content}\n"
+        reasoning_display_content = "\n".join(
+            (f"> {line}" if not line.startswith(">") else line)
+            for line in block["content"].splitlines()
+        )
+        reasoning_duration = block.get("duration", None)
+        content = f'{content}\n<details type="reasoning" done="true" duration="{reasoning_duration}">\n<summary>Thought for {reasoning_duration} seconds</summary>\n{reasoning_display_content}\n</details>\n'
 
     return content.strip()
 
@@ -156,7 +141,8 @@ class Pipe:
         DESCRIPTION: str = Field(
             "Contient des informations intéressantes sur le travail et le droit en France. Base de données administrative."
         )
-        DEPTH: int = Field(default=5)
+        MESSAGES_MEMORY: int = Field(default=5)
+        SHOW_CODE: bool = Field(default=True)
 
     def __init__(self):
         self.valves = self.Valves()
@@ -182,12 +168,13 @@ class Pipe:
         os.environ["COLLECTIONS"] = self.valves.COLLECTIONS
         os.environ["ALBERT_URL"] = self.valves.ALBERT_URL
         os.environ["ALBERT_KEY"] = self.valves.ALBERT_KEY
+        show_code = self.valves.SHOW_CODE
 
         session = requests.session()
         session.headers = {"Authorization": f"Bearer {self.valves.ALBERT_KEY}"}
 
         # We have to wait until now to import this, so it can read the env vars
-        from open_webui.utils.functions.agent_bob import create_tools, sys_prompt
+        from open_webui.utils.functions.agent import create_tools, sys_prompt
 
         def remove_consecutive_assistants(messages):
             filtered_messages = []
@@ -199,20 +186,32 @@ class Pipe:
                 last_role = msg["role"]
             return filtered_messages
 
+        # Flatten the roles to have a messages history as flat dict (readable by every model)
+        from smolagents.models import MessageRole
+        flatten_roles = {
+            MessageRole.SYSTEM: "system",
+            MessageRole.USER: "user",
+            MessageRole.ASSISTANT: "assistant",
+            MessageRole.TOOL_RESPONSE: "user",
+            MessageRole.TOOL_CALL: "user",
+        }
+        # This will be used for the agent
         def custom_model_albert(messages, stop_sequences=[]):
-            for message in messages:
-                if message["role"] == "tool-response":
-                    message["role"] = "user"
-                    message["content"] = "TOOL_RESPONSE: " + str(message["content"])
             messages = remove_consecutive_assistants(messages)
-            print(messages)
+            messages = [
+                {
+                    "role": flatten_roles[message["role"]],
+                    "content": message["content"][0]["text"],
+                }
+                for message in messages
+            ]
 
             data = {
                 "model": self.valves.SUPERVISOR_MODEL,
                 "messages": messages,
                 "stream": False,
                 "n": 1,
-                "temperature": 0.1,
+                "temperature": 0.2,
                 "repetition_penalty": 1,
                 "max_tokens": 1024,
                 "stop": stop_sequences,
@@ -222,16 +221,20 @@ class Pipe:
                 json=data,
                 timeout=100000,
             )
+            print(response.text)
             answer = response.json()["choices"][0]["message"]
             return SimpleNamespace(**answer)  # needed to have a 'json'
 
+        # Detecting if user is attaching files or collections on the frontend
         collections = parse_metadata(__metadata__)["collections"]
         description = " ".join(parse_metadata(__metadata__)["collections_descriptions"])
 
+        # If user is attaching files or collections, we need to use the RAG tool
         if collections != []:
             prefix = "(APPELLE LE TOOL RAG)"
             description = ""
 
+        # If user is not attaching files or collections, we can use the Albert RAG
         else:
             prefix = ""
             description = self.valves.DESCRIPTION
@@ -244,11 +247,14 @@ class Pipe:
             __request__,
             __event_emitter__,
         )
-
+        # Messages memory
         n_depth_message = (
-            self.valves.DEPTH + 1 if self.valves.DEPTH % 2 == 0 else self.valves.DEPTH
+            self.valves.MESSAGES_MEMORY + 1
+            if self.valves.MESSAGES_MEMORY % 2 == 0
+            else self.valves.MESSAGES_MEMORY
         )
         conversation_history = str(body["messages"][-n_depth_message:-1])
+        print(sys_prompt)
 
         agent = CodeAgent(
             tools=tools,
@@ -258,59 +264,43 @@ class Pipe:
             prompt_templates={
                 "system_prompt": sys_prompt.replace(
                     "{{conversation_history}}", conversation_history
-                ) + "\n Refuse toutes questions non liées à de l'administratif, et invites l'utilisateur à utiliser un autre compagnon spécialisé si tu ne peux pas répondre. En cas de doute sur une question, demande à l'utilisateur de préciser sa demande."
+                )
+                + ADDON_INSTRUCTION
             },
         )
 
         try:
-            # Create content blocks for intermediate steps
-            content_blocks = []
-
-            # Add a reasoning block at the start to track intermediate steps
-            reasoning_start_time = time.time()
-            reasoning_block = {
-                "type": "reasoning",
-                "content": "",
-                "start_tag": "think",
-                "end_tag": "/think",
-                "attributes": {"type": "reasoning_content"},
-                "started_at": reasoning_start_time,
-            }
-            content_blocks.append(reasoning_block)
-
-            # Store intermediate steps and the final step
-            intermediate_steps = []
-            final_step = None
-
             # Iterate through steps returned from the agent's execution
             for step_number, step in enumerate(
                 agent.run(prefix + body["messages"][-1]["content"], stream=True), 1
             ):
                 if isinstance(
                     step, smolagents.memory.ActionStep
-                ):  # Handle intermediate steps
-                    print(
-                        step, file=sys.stderr
-                    )  # Log the intermediate steps for debugging
-                    intermediate_steps.append(step)
+                ):  # Handle intermediate steps and ignore final step
 
                     # Serialize the current state of ALL content blocks
+                    if not show_code:
+                        content = step.model_output.split("Code:")[0].replace(
+                            "Thought: ", ""
+                        )
+                    else:
+                        content = step.model_output
+
                     content_block = {
                         "type": "reasoning",
-                        "content": step.model_output,
+                        "content": content,
                         "step_number": step_number,
                         "duration": np.round(step.duration, 2),
                     }
-                    print("LA ?")
-                    cumulative_content = serialize_content_blocks([content_block])
-                    print("ICI ?")
+
+                    pretty_content = serialize_content_blocks([content_block])
 
                     # Emit ALL content blocks so far, including intermediate reasoning
                     await __event_emitter__(
                         {
                             "type": "message",
                             "data": {
-                                "content": cumulative_content,
+                                "content": pretty_content,
                                 "done": False,  # Mark as incomplete, to behave correctly
                                 "hidden": False,
                             },
@@ -318,35 +308,24 @@ class Pipe:
                     )
 
                 # Track the final step
-                final_step = step
+            final_step = step.replace(
+                            "\nSi cette réponse convient, appelle juste final_answer(ta_variable) pour l'envoyer à l'utilisateur. Sinon continue les recherches ou pose une question à l'utilisateur.",
+                            "")
 
-            # Add the final reasoning block or result
-            if content_blocks and content_blocks[-1]["type"] == "reasoning":
-                reasoning_end_time = time.time()
-                content_blocks[-1]["ended_at"] = reasoning_end_time
-                content_blocks[-1]["duration"] = int(
-                    reasoning_end_time - reasoning_start_time
-                )
-
-            # Serialize the **final state of all content blocks** (including all intermediate reasoning steps)
-            final_content = serialize_content_blocks(content_blocks)
-            if final_content and __event_emitter__:
+            if final_step and __event_emitter__:
                 await __event_emitter__(
                     {
                         "type": "message",
                         "data": {
-                            "content": final_step.replace(
-                                "\nSi cette réponse convient, appelle juste final_answer(ta_variable) pour l'envoyer à l'utilisateur. Sinon continue les recherches ou pose une question à l'utilisateur.",
-                                "",
-                            ),
+                            "content": final_step,
                             "done": True,  # Mark completion explicitly
                             "hidden": False,
                         },
                     }
                 )
-            return
+            return #final_step # This is only needed for endpoint testing but would break the reasonning stream if left
         except Exception as e:
             print(e)
             return "Désolé, une erreur est survenue, je crois que mes outils sont en panne."
 
-        return
+        return #body # This is only needed for endpoint testing but would break the reasonning stream if left
