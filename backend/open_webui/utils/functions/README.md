@@ -169,10 +169,13 @@ flowchart TB
 
 # Observed issues
 
-## Streaming issues
-Using the built-in event emitter to stream intermediate “Thought”/“Code” blocks back to the frontend is not working in a streaming way. 
+1 - Using the built-in event emitter to stream intermediate “Thought”/“Code” blocks back to the frontend is not working in a streaming way. 
 The DeepSearch tool being async, streaming intermediate steps using the event emitter is not working as expected, as every intermediate event will only be sent after the final answer is generated. 
 Event emitter is used in the DeepSearch tool anyway to be able to show the chunks for the RAG part, but intermediate steps can't be streamed.
+
+2 - The title generating task is printed as a final answer but it should not
+
+3 - Les liens internet sont afffichés comme des fichiers
 
 links may link to the issue: 
 - https://github.com/huggingface/smolagents/issues/334
