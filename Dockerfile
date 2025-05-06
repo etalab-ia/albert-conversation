@@ -27,8 +27,15 @@ ARG BUILD_HASH
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN rm -f package-lock.json && npm install && npm cache clean --force
-
+COPY scripts ./scripts/
+# Create the install-dsfr.sh script directly in the container
+RUN echo '#!/bin/sh\n\n# Copy DSFR files to static\nmkdir -p static/utility\ncp -R \\\n  node_modules/@gouvfr/dsfr/dist/dsfr.min.css \\\n  node_modules/@gouvfr/dsfr/dist/dsfr.module.min.js \\\n  node_modules/@gouvfr/dsfr/dist/dsfr.module.min.js.map \\\n  node_modules/@gouvfr/dsfr/dist/dsfr.nomodule.min.js \\\n  node_modules/@gouvfr/dsfr/dist/dsfr.nomodule.min.js.map \\\n  node_modules/@gouvfr/dsfr/dist/favicon \\\n  node_modules/@gouvfr/dsfr/dist/fonts \\\n  node_modules/@gouvfr/dsfr/dist/icons \\\n  static/\ncp -R \\\n  node_modules/@gouvfr/dsfr/dist/utility/utility.min.css \\\n  static/utility/' > ./scripts/install-dsfr.sh
+RUN chmod +x ./scripts/install-dsfr.sh
+# Create static directory in advance
+RUN mkdir -p static/utility
+RUN rm -f package-lock.json && npm install --ignore-scripts --unsafe-perm && npm cache clean --force
+# Run DSFR install script manually
+RUN sh ./scripts/install-dsfr.sh
 
 COPY . .
 ENV APP_BUILD_HASH=${BUILD_HASH}
@@ -138,7 +145,7 @@ RUN if [ "$USE_OLLAMA" = "true" ]; then \
 # install python dependencies
 COPY --chown=$UID:$GID ./backend/requirements.txt ./requirements.txt
 
-RUN pip3 install uv && \
+RUN pip3 install --no-cache-dir uv && \
     if [ "$USE_CUDA" = "true" ]; then \
     # If you use CUDA the whisper and embedding model will be downloaded on first use
     pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/$USE_CUDA_DOCKER_VER --no-cache-dir && \

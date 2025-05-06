@@ -4,6 +4,7 @@ import time
 import datetime
 import logging
 from aiohttp import ClientSession
+import os
 
 from open_webui.models.auths import (
     AddUserForm,
@@ -227,8 +228,8 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
             ciphers=LDAP_CIPHERS,
         )
     except Exception as e:
-        log.error(f"An error occurred on TLS: {str(e)}")
-        raise HTTPException(400, detail=str(e))
+        log.error(f"TLS configuration error: {str(e)}")
+        raise HTTPException(400, detail="Failed to configure TLS for LDAP connection.")
 
     try:
         server = Server(
@@ -243,7 +244,7 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
             LDAP_APP_DN,
             LDAP_APP_PASSWORD,
             auto_bind="NONE",
-            authentication="SIMPLE",
+            authentication="SIMPLE" if LDAP_APP_DN else "ANONYMOUS",
         )
         if not connection_app.bind():
             raise HTTPException(400, detail="Application account bind failed")
@@ -263,11 +264,15 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
 
         entry = connection_app.entries[0]
         username = str(entry[f"{LDAP_ATTRIBUTE_FOR_USERNAME}"]).lower()
-        email = str(entry[f"{LDAP_ATTRIBUTE_FOR_MAIL}"])
-        if not email or email == "" or email == "[]":
-            raise HTTPException(400, f"User {form_data.user} does not have email.")
-        else:
+        email = entry[f"{LDAP_ATTRIBUTE_FOR_MAIL}"].value  # retrive the Attribute value
+        if not email:
+            raise HTTPException(400, "User does not have a valid email address.")
+        elif isinstance(email, str):
             email = email.lower()
+        elif isinstance(email, list):
+            email = email[0].lower()
+        else:
+            email = str(email).lower()
 
         cn = str(entry["cn"])
         user_dn = entry.entry_dn
@@ -281,7 +286,7 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
                 authentication="SIMPLE",
             )
             if not connection_user.bind():
-                raise HTTPException(400, f"Authentication failed for {form_data.user}")
+                raise HTTPException(400, "Authentication failed.")
 
             user = Users.get_user_by_email(email)
             if not user:
@@ -309,7 +314,10 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
                 except HTTPException:
                     raise
                 except Exception as err:
-                    raise HTTPException(500, detail=ERROR_MESSAGES.DEFAULT(err))
+                    log.error(f"LDAP user creation error: {str(err)}")
+                    raise HTTPException(
+                        500, detail="Internal error occurred during LDAP user creation."
+                    )
 
             user = Auths.authenticate_user_by_trusted_header(email)
 
@@ -345,12 +353,10 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
             else:
                 raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_CRED)
         else:
-            raise HTTPException(
-                400,
-                f"User {form_data.user} does not match the record. Search result: {str(entry[f'{LDAP_ATTRIBUTE_FOR_USERNAME}'])}",
-            )
+            raise HTTPException(400, "User record mismatch.")
     except Exception as e:
-        raise HTTPException(400, detail=str(e))
+        log.error(f"LDAP authentication error: {str(e)}")
+        raise HTTPException(400, detail="LDAP authentication failed.")
 
 
 ############################
@@ -458,6 +464,11 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
 # OAuth2 Callback
 ############################
 
+def is_valid_siret(siret):
+    VALID_SIRETS = [
+        "13002526500013", # DINUM
+    ]
+    return siret in VALID_SIRETS
 
 @router.get("/callback")
 async def auth_callback(request: Request, response: Response):
@@ -550,12 +561,17 @@ async def auth_callback(request: Request, response: Response):
         # Check if user exists in database
         db_user = Users.get_user_by_email(email)
         if not db_user:
-            # If no users exist yet, assign 'admin'; otherwise, use default role
-            role = (
-                "admin"
-                if Users.get_num_users() == 0
-                else request.app.state.config.DEFAULT_USER_ROLE
-            )
+            if Users.get_num_users() == 0:
+                # This test allows assigning the `admin` role to the very first user created when the
+                # Users table is empty. In practice, this case only happens once during the first 
+                # installation of an instance
+                role = "admin"
+            else:
+                if siret and is_valid_siret(siret):
+                    role = "user"
+                else:
+                    role = request.app.state.config.DEFAULT_USER_ROLE
+                
             db_user = Auths.insert_new_auth(
                 email=email,
                 password=secrets.token_urlsafe(32),  # Random password since we use OAuth
@@ -614,6 +630,10 @@ async def auth_callback(request: Request, response: Response):
 
 @router.post("/signup", response_model=SessionUserResponse)
 async def signup(request: Request, response: Response, form_data: SignupForm):
+    print("Debug - WEBUI_AUTH:", WEBUI_AUTH)
+    print("Debug - ENABLE_SIGNUP env:", os.environ.get("ENABLE_SIGNUP"))
+    print("Debug - ENABLE_SIGNUP config:", request.app.state.config.ENABLE_SIGNUP)
+    
     if not request.app.state.config.ENABLE_SIGNUP:
         raise HTTPException(400, detail=ERROR_MESSAGES.SIGNUP_DISABLED)
 
@@ -626,6 +646,7 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
         raise HTTPException(400, detail=ERROR_MESSAGES.EMAIL_TAKEN)
 
     try:
+        user_count = Users.get_num_users()
         role = (
             "admin" if user_count == 0 else request.app.state.config.DEFAULT_USER_ROLE
         )
@@ -633,6 +654,13 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
         if user_count == 0:
             # Disable signup after the first user is created
             request.app.state.config.ENABLE_SIGNUP = False
+
+        # The password passed to bcrypt must be 72 bytes or fewer. If it is longer, it will be truncated before hashing.
+        if len(form_data.password.encode("utf-8")) > 72:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.PASSWORD_TOO_LONG,
+            )
 
         hashed = get_password_hash(form_data.password)
         user = Auths.insert_new_auth(
@@ -688,7 +716,8 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
         else:
             raise HTTPException(500, detail=ERROR_MESSAGES.CREATE_USER_ERROR)
     except Exception as err:
-        raise HTTPException(500, detail=ERROR_MESSAGES.DEFAULT(err))
+        log.error(f"Signup error: {str(err)}")
+        raise HTTPException(500, detail="An internal error occurred during signup.")
 
 
 @router.get("/prepare-logout")
@@ -770,8 +799,14 @@ async def logout(request: Request, response: Response, state: str = None):
 
 
 @router.get("/userinfo")
-async def userinfo(current_user: UserInfo = Depends(get_current_user)):
-    return current_user
+async def userinfo(request: Request, current_user: UserInfo = Depends(get_current_user)):
+    user_permissions = get_permissions(
+        current_user.id, request.app.state.config.USER_PERMISSIONS
+    )
+    
+    user_data = current_user.dict()
+    user_data["permissions"] = user_permissions
+    return user_data
 
 
 ############################
@@ -813,7 +848,10 @@ async def add_user(form_data: AddUserForm, user=Depends(get_admin_user)):
         else:
             raise HTTPException(500, detail=ERROR_MESSAGES.CREATE_USER_ERROR)
     except Exception as err:
-        raise HTTPException(500, detail=ERROR_MESSAGES.DEFAULT(err))
+        log.error(f"Add user error: {str(err)}")
+        raise HTTPException(
+            500, detail="An internal error occurred while adding the user."
+        )
 
 
 ############################
@@ -861,11 +899,12 @@ async def get_admin_config(request: Request, user=Depends(get_admin_user)):
         "ENABLE_API_KEY": request.app.state.config.ENABLE_API_KEY,
         "ENABLE_API_KEY_ENDPOINT_RESTRICTIONS": request.app.state.config.ENABLE_API_KEY_ENDPOINT_RESTRICTIONS,
         "API_KEY_ALLOWED_ENDPOINTS": request.app.state.config.API_KEY_ALLOWED_ENDPOINTS,
-        "ENABLE_CHANNELS": request.app.state.config.ENABLE_CHANNELS,
         "DEFAULT_USER_ROLE": request.app.state.config.DEFAULT_USER_ROLE,
         "JWT_EXPIRES_IN": request.app.state.config.JWT_EXPIRES_IN,
         "ENABLE_COMMUNITY_SHARING": request.app.state.config.ENABLE_COMMUNITY_SHARING,
         "ENABLE_MESSAGE_RATING": request.app.state.config.ENABLE_MESSAGE_RATING,
+        "ENABLE_CHANNELS": request.app.state.config.ENABLE_CHANNELS,
+        "ENABLE_USER_WEBHOOKS": request.app.state.config.ENABLE_USER_WEBHOOKS,
     }
 
 
@@ -876,11 +915,12 @@ class AdminConfig(BaseModel):
     ENABLE_API_KEY: bool
     ENABLE_API_KEY_ENDPOINT_RESTRICTIONS: bool
     API_KEY_ALLOWED_ENDPOINTS: str
-    ENABLE_CHANNELS: bool
     DEFAULT_USER_ROLE: str
     JWT_EXPIRES_IN: str
     ENABLE_COMMUNITY_SHARING: bool
     ENABLE_MESSAGE_RATING: bool
+    ENABLE_CHANNELS: bool
+    ENABLE_USER_WEBHOOKS: bool
 
 
 @router.post("/admin/config")
@@ -915,6 +955,8 @@ async def update_admin_config(
     )
     request.app.state.config.ENABLE_MESSAGE_RATING = form_data.ENABLE_MESSAGE_RATING
 
+    request.app.state.config.ENABLE_USER_WEBHOOKS = form_data.ENABLE_USER_WEBHOOKS
+
     return {
         "SHOW_ADMIN_DETAILS": request.app.state.config.SHOW_ADMIN_DETAILS,
         "WEBUI_URL": request.app.state.config.WEBUI_URL,
@@ -927,6 +969,7 @@ async def update_admin_config(
         "JWT_EXPIRES_IN": request.app.state.config.JWT_EXPIRES_IN,
         "ENABLE_COMMUNITY_SHARING": request.app.state.config.ENABLE_COMMUNITY_SHARING,
         "ENABLE_MESSAGE_RATING": request.app.state.config.ENABLE_MESSAGE_RATING,
+        "ENABLE_USER_WEBHOOKS": request.app.state.config.ENABLE_USER_WEBHOOKS,
     }
 
 
@@ -980,11 +1023,6 @@ async def update_ldap_server(
         value = getattr(form_data, key)
         if not value:
             raise HTTPException(400, detail=f"Required field {key} is empty")
-
-    if form_data.use_tls and not form_data.certificate_path:
-        raise HTTPException(
-            400, detail="TLS is enabled but certificate file path is missing"
-        )
 
     request.app.state.config.LDAP_SERVER_LABEL = form_data.label
     request.app.state.config.LDAP_SERVER_HOST = form_data.host

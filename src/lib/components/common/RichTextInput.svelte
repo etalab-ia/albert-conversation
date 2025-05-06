@@ -389,5 +389,11 @@
 
 <div
 	bind:this={element}
-	class="relative w-full min-w-full h-full min-h-fit rounded-full {className}"
+	class="relative w-full min-w-full h-full min-h-fit rich-text-input {className}"
 />
+
+<style>
+	:global(.rich-text-input *) {
+		outline: none !important;
+	}
+</style>
