@@ -19,8 +19,6 @@
 	import Footer from '$lib/components/chat/Footer.svelte';
 	import ProconnectButton from '$lib/components/auth/ProconnectButton.svelte';
 
-	import { fade, fly } from 'svelte/transition';
-
 	import type { Writable } from 'svelte/store';
 	import type { i18n as i18nType } from 'i18next';
 
@@ -44,23 +42,16 @@
 
 	// Carousel state
 	let currentIndex = 0;
-	const carouselItems = [
+	$: carouselItems = [
 		{
-			chat1: $i18n.t('Can you summarize this document for me 📖?'),
-			chat2: $i18n.t('Certainly! Here is a concise summary of the document you provided.'),
-			image: '/assets/illustrations/code3.png'
+			chat1: $i18n.t('carousel_item_1_chat1'),
+			chat2: $i18n.t('carousel_item_1_chat2'),
+			typewriterText: $i18n.t('carousel_item_1_typewriter')
 		},
 		{
-			chat1: $i18n.t('Can you create a web form for me?'),
-			chat2: $i18n.t(
-				'Of course! Here is a Python function that reverses a string:\n\ndef reverse_string(s):\n    return s[::-1]'
-			),
-			image: '/assets/illustrations/code3.png'
-		},
-		{
-			chat1: $i18n.t('What is the latest news about AI research?'),
-			chat2: $i18n.t('Let me search the internet for the most recent updates on AI research.'),
-			image: '/assets/illustrations/internet.svg'
+			chat1: $i18n.t('carousel_item_2_chat1'),
+			chat2: $i18n.t('carousel_item_2_chat2'),
+			image: '/assets/illustrations/code.png'
 		}
 	];
 
@@ -95,6 +86,11 @@
 		}, 700);
 
 	let previousIndex = currentIndex;
+
+	// Typewriter animation state
+	let typewriterText = '';
+	let typewriterIndex = 0;
+	let typewriterInterval: ReturnType<typeof setInterval>;
 
 	function startSequentialFadeIn() {
 		showChat1 = false;
@@ -139,6 +135,28 @@
 		!isFadingOut
 	) {
 		startSequentialFadeIn();
+	}
+
+	function startTypewriterAnimation(text: string) {
+		typewriterText = '';
+		typewriterIndex = 0;
+		if (typewriterInterval) clearInterval(typewriterInterval);
+		typewriterInterval = setInterval(() => {
+			if (typewriterIndex < text.length) {
+				typewriterText += text[typewriterIndex];
+				typewriterIndex++;
+			} else {
+				clearInterval(typewriterInterval);
+			}
+		}, 18);
+	}
+
+	$: if (loaded && currentIndex === 0 && showImage) {
+		startTypewriterAnimation(carouselItems[0].typewriterText || '');
+	}
+	$: if (loaded && currentIndex !== 0 && typewriterInterval) {
+		clearInterval(typewriterInterval);
+		typewriterText = '';
 	}
 
 	let carouselInterval: ReturnType<typeof setInterval>;
@@ -393,6 +411,9 @@
 														>
 															{@html $i18n.t('ai_for_public_services').replace(/\n/g, '<br />')}
 														</div>
+														<div class="text-base text-gray-500 dark:text-gray-400 mt-2">
+															{$i18n.t('carousel_subtitle', { WEBUI_NAME: $WEBUI_NAME })}
+														</div>
 													</div>
 												</div>
 											</div>
@@ -409,7 +430,7 @@
 
 									<!-- Right column - Carousel -->
 									<div
-										class="w-full md:w-1/2 md:block bg-blue-50/60 rounded-xl m-4 h-[calc(100%-1.5rem)] flex items-center justify-center"
+										class="w-full md:w-1/2 md:block hidden bg-blue-50/60 rounded-xl m-4 h-[calc(100%-1.5rem)] flex items-center justify-center"
 									>
 										<div class="w-full flex flex-col items-center justify-center h-full relative">
 											<div
@@ -439,20 +460,37 @@
 														>
 															{carouselItems[currentIndex].chat2}
 														</div>
-														<div
-															class="carousel-image z-10 transition-all rounded-4xl duration-700"
-															style="opacity: {showImage ? 1 : 0}; transform: translateY({showImage
-																? '0'
-																: wasImageVisible
-																	? '40px'
-																	: '-40px'}); position: relative; pointer-events: none; margin-left: 180px;"
-														>
-															<img
-																src={carouselItems[currentIndex].image}
-																alt="carousel image"
-																style="width: 400px; height: auto; max-width: none; max-height: none; display: block; border-radius: 1rem;"
-															/>
-														</div>
+														{#if currentIndex === 0}
+															<div
+																class="typewriter-box z-10 transition-all rounded-4xl duration-700"
+																style="opacity: {showImage
+																	? 1
+																	: 0}; transform: translateY({showImage
+																	? '0'
+																	: wasImageVisible
+																		? '40px'
+																		: '-40px'}); position: relative; pointer-events: none; margin-left: 64px;"
+															>
+																<pre class="typewriter-text">{typewriterText}</pre>
+															</div>
+														{:else}
+															<div
+																class="carousel-image z-10 transition-all rounded-4xl duration-700"
+																style="opacity: {showImage
+																	? 1
+																	: 0}; transform: translateY({showImage
+																	? '0'
+																	: wasImageVisible
+																		? '40px'
+																		: '-40px'}); position: relative; pointer-events: none; margin-left: 64px;"
+															>
+																<img
+																	src={carouselItems[currentIndex].image}
+																	alt="carousel image"
+																	style="width: 400px; height: auto; max-width: none; max-height: none; display: block; border-radius: 1rem;"
+																/>
+															</div>
+														{/if}
 													</div>
 												</div>
 											</div>
@@ -495,16 +533,21 @@
 		color: #222;
 		border-radius: 1.5rem;
 		padding: 1rem 2rem;
-		box-shadow: 0 2px 16px 0 rgba(0, 0, 0, 0.04);
+		box-shadow:
+			0 4px 16px 0 rgba(0, 0, 0, 0.08),
+			0 1.5px 4px 0 rgba(0, 0, 0, 0.04);
 		font-size: 1.05rem;
 		font-weight: 400;
 		max-width: 320px;
 		text-align: left;
 		min-height: 44px;
+		z-index: 20;
+		position: relative;
 	}
 	.carousel-image {
-		margin-top: 0.5rem;
-		margin-left: 48px;
+		margin-top: -26px;
+		margin-left: -16px;
+		z-index: 10;
 	}
 	.carousel-stack {
 		min-height: 340px;
@@ -535,5 +578,34 @@
 		width: auto;
 		min-width: 0;
 		max-width: none;
+	}
+	.typewriter-box {
+		background: #f8fafc;
+		color: #1a202c;
+		border-radius: 1.5rem;
+		padding: 2rem 2.5rem;
+		box-shadow: 0 2px 16px 0 rgba(0, 0, 0, 0.04);
+		font-size: 1.15rem;
+		font-weight: 500;
+		min-width: 400px;
+		max-width: 400px;
+		width: 400px;
+		height: 282px;
+		text-align: left;
+		display: flex;
+		align-items: flex-start;
+		justify-content: flex-start;
+		margin-top: -32px;
+		margin-left: -16px;
+		z-index: 10;
+	}
+	.typewriter-text {
+		white-space: pre-line;
+		margin: 0;
+		background: none;
+		color: inherit;
+		font-size: 1.08rem;
+		line-height: 1.6;
+		width: 100%;
 	}
 </style>

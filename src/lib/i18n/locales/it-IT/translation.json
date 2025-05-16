@@ -1273,5 +1273,11 @@
 	"Except where otherwise noted, content on this site is licensed under the": "Salvo diversa indicazione, i contenuti di questo sito sono concessi in licenza sotto la",
 	"ai_for_public_services": "AI\nper\ni servizi pubblici",
 	"What is ProConnect ?": "Che cos'è ProConnect?",
-	"What is ProConnect ? - New window": "Che cos'è ProConnect? - Nuova finestra"
+	"What is ProConnect ? - New window": "Che cos'è ProConnect? - Nuova finestra",
+	"carousel_item_1_chat1": "Puoi riassumere questo documento per me 📖?",
+	"carousel_item_1_chat2": "Certamente! Ecco un riassunto conciso del documento che hai fornito.",
+	"carousel_item_1_typewriter": "Riassunto del documento amministrativo:\nQuesto documento presenta le nuove procedure per la gestione delle ferie per i dipendenti pubblici. Le richieste devono essere inviate tramite il portale interno, validate dal responsabile gerarchico e poi elaborate...",
+	"carousel_item_2_chat1": "Puoi creare un modulo web per me?",
+	"carousel_item_2_chat2": "Certo! Ecco il tuo modulo web.",
+	"carousel_subtitle": "{{WEBUI_NAME}} è il tuo assistente IA per i servizi pubblici, progettato per aiutarti nelle tue attività quotidiane."
 }

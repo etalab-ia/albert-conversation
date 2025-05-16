@@ -1279,5 +1279,11 @@
 	"Albert can use the internet to answer your questions.": "Albert kann das Internet nutzen, um Ihre Fragen zu beantworten.",
 	"ai_for_public_services": "KI\nfür\nöffentliche Dienste",
 	"What is ProConnect ?": "Was ist ProConnect?",
-	"What is ProConnect ? - New window": "Was ist ProConnect? - Neues Fenster"
+	"What is ProConnect ? - New window": "Was ist ProConnect? - Neues Fenster",
+	"carousel_item_1_chat1": "Kannst du dieses Dokument für mich zusammenfassen 📖?",
+	"carousel_item_1_chat2": "Natürlich! Hier ist eine kurze Zusammenfassung des bereitgestellten Dokuments.",
+	"carousel_item_1_typewriter": "Zusammenfassung des Verwaltungsdokuments:\nDieses Dokument stellt die neuen Verfahren für die Urlaubsverwaltung von Beamten vor. Anträge müssen über das interne Portal eingereicht, vom Vorgesetzten genehmigt und dann bearbeitet werden...",
+	"carousel_item_2_chat1": "Kannst du ein Webformular für mich erstellen?",
+	"carousel_item_2_chat2": "Natürlich! Hier ist dein Webformular.",
+	"carousel_subtitle": "{{WEBUI_NAME}} ist dein KI-Assistent für öffentliche Dienste und hilft dir bei deinen täglichen Aufgaben."
 }

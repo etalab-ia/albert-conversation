@@ -1280,5 +1280,11 @@
 	"Albert can use the internet to answer your questions.": "",
 	"ai_for_public_services": "AI for\npublic services",
 	"What is ProConnect ?": "",
-	"What is ProConnect ? - New window": ""
+	"What is ProConnect ? - New window": "",
+	"carousel_item_1_chat1": "Can you summarize this document for me 📖?",
+	"carousel_item_1_chat2": "Certainly! Here is a concise summary of the document you provided.",
+	"carousel_item_1_typewriter": "Summary of the administrative document:\nThis document presents the new procedures for managing leave for public agents. Requests must be submitted via the internal portal, validated by the hierarchical manager, and then processed...",
+	"carousel_item_2_chat1": "Can you create a web form for me?",
+	"carousel_item_2_chat2": "Of course! Here is your web form.",
+	"carousel_subtitle": " is your AI assistant for public services, designed to help you in your everyday tasks."
 }
