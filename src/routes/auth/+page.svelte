@@ -1,5 +1,4 @@
 <script lang="ts">
-	// Import declaration file for Matomo analytics
 	import { toast } from 'svelte-sonner';
 
 	import { onMount, getContext, tick } from 'svelte';
@@ -19,8 +18,6 @@
 	import Header from '$lib/components/layout/Header.svelte';
 	import Footer from '$lib/components/chat/Footer.svelte';
 	import ProconnectButton from '$lib/components/auth/ProconnectButton.svelte';
-
-	import { fade, fly } from 'svelte/transition';
 
 	import type { Writable } from 'svelte/store';
 	import type { i18n as i18nType } from 'i18next';
@@ -45,36 +42,128 @@
 
 	// Carousel state
 	let currentIndex = 0;
-	const carouselItems = [
+	$: carouselItems = [
 		{
-			title: $i18n.t('Ask your questions'),
-			description: $i18n.t('Albert answers your everyday questions.'),
-			image: '/assets/illustrations/question.svg'
+			chat1: $i18n.t('carousel_item_1_chat1'),
+			chat2: $i18n.t('carousel_item_1_chat2'),
+			typewriterText: $i18n.t('carousel_item_1_typewriter')
 		},
 		{
-			title: $i18n.t('Integrate your documents'),
-			description: $i18n.t('Albert helps you chat with your documents.'),
-			image: '/assets/illustrations/file-search.svg'
-		},
-		{
-			title: $i18n.t('AI ❤️ Internet'),
-			description: $i18n.t('Albert can use the internet to answer your questions.'),
-			image: '/assets/illustrations/internet.svg'
+			chat1: $i18n.t('carousel_item_2_chat1'),
+			chat2: $i18n.t('carousel_item_2_chat2'),
+			image: '/assets/illustrations/code.png'
 		}
 	];
 
-	const nextSlide = () => {
-		currentIndex = (currentIndex + 1) % carouselItems.length;
-	};
+	// Animation state for chat bubbles and image
+	let showChat1 = false;
+	let showChat2 = false;
+	let showImage = false;
+	let isFadingOut = false;
 
-	const previousSlide = () => {
-		currentIndex = (currentIndex - 1 + carouselItems.length) % carouselItems.length;
-	};
+	// Track previous visibility for fade direction
+	let wasChat1Visible = false;
+	let wasChat2Visible = false;
+	let wasImageVisible = false;
 
-	// Auto-advance carousel
+	// Watchers to update wasVisible flags
+	$: if (showChat1 && !wasChat1Visible) wasChat1Visible = true;
+	$: if (!showChat1 && wasChat1Visible)
+		setTimeout(() => {
+			wasChat1Visible = false;
+		}, 700);
+
+	$: if (showChat2 && !wasChat2Visible) wasChat2Visible = true;
+	$: if (!showChat2 && wasChat2Visible)
+		setTimeout(() => {
+			wasChat2Visible = false;
+		}, 700);
+
+	$: if (showImage && !wasImageVisible) wasImageVisible = true;
+	$: if (!showImage && wasImageVisible)
+		setTimeout(() => {
+			wasImageVisible = false;
+		}, 700);
+
+	let previousIndex = currentIndex;
+
+	// Typewriter animation state
+	let typewriterText = '';
+	let typewriterIndex = 0;
+	let typewriterInterval: ReturnType<typeof setInterval>;
+
+	function startSequentialFadeIn() {
+		showChat1 = false;
+		showChat2 = false;
+		showImage = false;
+		setTimeout(() => {
+			showChat1 = true;
+		}, 200);
+		setTimeout(() => {
+			showChat2 = true;
+		}, 600);
+		setTimeout(() => {
+			showImage = true;
+		}, 900);
+	}
+
+	function fadeOutAndNextStep() {
+		isFadingOut = true;
+		showChat1 = false;
+		showChat2 = false;
+		showImage = false;
+		setTimeout(() => {
+			isFadingOut = false;
+			previousIndex = currentIndex;
+			currentIndex = (currentIndex + 1) % carouselItems.length;
+			startSequentialFadeIn();
+		}, 700);
+	}
+
+	// Only trigger fade-in sequence once per slide change
+	$: if (loaded && currentIndex !== previousIndex && !isFadingOut) {
+		// Do nothing, handled by fadeOutAndNextStep
+	}
+
+	// On initial load, start fade-in
+	$: if (
+		loaded &&
+		previousIndex === currentIndex &&
+		!showChat1 &&
+		!showChat2 &&
+		!showImage &&
+		!isFadingOut
+	) {
+		startSequentialFadeIn();
+	}
+
+	function startTypewriterAnimation(text: string) {
+		typewriterText = '';
+		typewriterIndex = 0;
+		if (typewriterInterval) clearInterval(typewriterInterval);
+		typewriterInterval = setInterval(() => {
+			if (typewriterIndex < text.length) {
+				typewriterText += text[typewriterIndex];
+				typewriterIndex++;
+			} else {
+				clearInterval(typewriterInterval);
+			}
+		}, 18);
+	}
+
+	$: if (loaded && currentIndex === 0 && showImage) {
+		startTypewriterAnimation(carouselItems[0].typewriterText || '');
+	}
+	$: if (loaded && currentIndex !== 0 && typewriterInterval) {
+		clearInterval(typewriterInterval);
+		typewriterText = '';
+	}
+
 	let carouselInterval: ReturnType<typeof setInterval>;
 	onMount(() => {
-		carouselInterval = setInterval(nextSlide, 7000);
+		carouselInterval = setInterval(() => {
+			if (!isFadingOut) fadeOutAndNextStep();
+		}, 7000);
 		return () => clearInterval(carouselInterval);
 	});
 
@@ -198,8 +287,6 @@
 		setLogoImage();
 
 		_paq.push(['trackPageView', 'Auth Page']);
-
-		// UTM tracking is now handled in +layout.svelte
 	});
 </script>
 
@@ -221,7 +308,7 @@
 	{#if loaded}
 		<div class="min-h-full w-full flex flex-col">
 			<div class="flex-1 flex items-center">
-				<div class="w-full flex justify-center font-primary text-black dark:text-white py-20">
+				<div class="w-full flex justify-center font-primary text-black dark:text-white pt-[5vh]">
 					<div class="w-full px-10 flex flex-col text-center">
 						<div class="w-full dark:text-gray-100">
 							{#if $config?.onboarding}
@@ -308,12 +395,14 @@
 								</form>
 							{:else}
 								<div
-									class="flex flex-col md:flex-row w-full gap-8 md:gap-16 items-center justify-center"
+									class="flex flex-col md:flex-row w-full gap-8 md:gap-16 items-center justify-center h-[95vh]"
 								>
 									<!-- Left column - Login content -->
-									<div class="flex flex-col w-full md:w-1/2 gap-4 items-center justify-center">
+									<div
+										class="flex flex-col w-full md:w-1/2 gap-4 m-4 h-[calc(100%-1.5rem)] items-center justify-center"
+									>
 										<!-- Title section -->
-										<div class="">
+										<div>
 											<div class="w-full max-w-md mx-auto">
 												<div class="pb-4 w-full dark:text-gray-100 text-center">
 													<div class="flex flex-col gap-3 items-center text-center">
@@ -321,6 +410,9 @@
 															class="text-2xl sm:text-4xl md:text-5xl fr-text-default--grey font-bold text-center"
 														>
 															{@html $i18n.t('ai_for_public_services').replace(/\n/g, '<br />')}
+														</div>
+														<div class="text-base text-gray-500 dark:text-gray-400 mt-2">
+															{$i18n.t('carousel_subtitle', { WEBUI_NAME: $WEBUI_NAME })}
 														</div>
 													</div>
 												</div>
@@ -337,55 +429,70 @@
 									</div>
 
 									<!-- Right column - Carousel -->
-									<div class="w-full md:w-1/2 hidden md:block">
-										<div class="w-full max-w-md mx-auto">
-											<!-- Carousel container -->
+									<div
+										class="w-full md:w-1/2 md:block hidden bg-blue-50/60 rounded-xl m-4 h-[calc(100%-1.5rem)] flex items-center justify-center"
+									>
+										<div class="w-full flex flex-col items-center justify-center h-full relative">
 											<div
-												class="carousel flex flex-col justify-between min-h-[350px] h-[350px] sm:min-h-[400px] sm:h-[400px] md:min-h-[450px] md:h-[450px] overflow-hidden"
+												class="carousel-stack relative w-full flex flex-col items-center justify-center h-[340px]"
 											>
-												{#each carouselItems as item, i}
-													{#if currentIndex === i}
-														<!-- Carousel item -->
+												<div
+													class="carousel-bubble-container absolute left-0 right-0 top-0 flex flex-col items-center justify-center w-full h-full pointer-events-none"
+												>
+													<div class="carousel-stack-inner">
 														<div
-															class="carousel-item flex flex-col gap-4 md:gap-6 w-full h-full"
-															in:fly={{ x: 200, duration: 1000, opacity: 1 }}
-															out:fly={{ x: -200, duration: 1000, opacity: 0 }}
+															class="chat-bubble mb-4 z-30 transition-all duration-700"
+															style="opacity: {showChat1 ? 1 : 0}; transform: translateY({showChat1
+																? '0'
+																: wasChat1Visible
+																	? '40px'
+																	: '-40px'}); position: relative; pointer-events: none;"
 														>
-															<!-- Carousel text content -->
-															<div class="text-center">
-																<h2 class="text-xl md:text-2xl font-bold mb-2">
-																	{$i18n.t(item.title)}
-																</h2>
-																<p class="text-sm md:text-base text-gray-600 dark:text-gray-300">
-																	{$i18n.t(item.description)}
-																</p>
+															{carouselItems[currentIndex].chat1}
+														</div>
+														<div
+															class="chat-bubble-secondary mb-4 z-20 transition-all duration-700"
+															style="opacity: {showChat2 ? 1 : 0}; transform: translateY({showChat2
+																? '0'
+																: wasChat2Visible
+																	? '40px'
+																	: '-40px'}); position: relative; pointer-events: none;"
+														>
+															{carouselItems[currentIndex].chat2}
+														</div>
+														{#if currentIndex === 0}
+															<div
+																class="typewriter-box z-10 transition-all rounded-4xl duration-700"
+																style="opacity: {showImage
+																	? 1
+																	: 0}; transform: translateY({showImage
+																	? '0'
+																	: wasImageVisible
+																		? '40px'
+																		: '-40px'}); position: relative; pointer-events: none; margin-left: 64px;"
+															>
+																<pre class="typewriter-text">{typewriterText}</pre>
 															</div>
-															<!-- Carousel image -->
-															<div class="flex-1 flex items-center justify-center">
+														{:else}
+															<div
+																class="carousel-image z-10 transition-all rounded-4xl duration-700"
+																style="opacity: {showImage
+																	? 1
+																	: 0}; transform: translateY({showImage
+																	? '0'
+																	: wasImageVisible
+																		? '40px'
+																		: '-40px'}); position: relative; pointer-events: none; margin-left: 64px;"
+															>
 																<img
-																	src={item.image}
-																	alt={$i18n.t(item.title)}
-																	class="max-h-56 sm:max-h-64 md:max-h-72 w-auto object-contain"
+																	src={carouselItems[currentIndex].image}
+																	alt="carousel image"
+																	style="width: 400px; height: auto; max-width: none; max-height: none; display: block; border-radius: 1rem;"
 																/>
 															</div>
-															<!-- Carousel navigation dots -->
-															<div class="flex justify-center gap-2 mt-2 md:mt-4">
-																{#each carouselItems as _, i}
-																	<button
-																		class="w-2 h-2 rounded-full transition-colors duration-200 {currentIndex ===
-																		i
-																			? 'bg-blue-500'
-																			: 'bg-gray-300 dark:bg-gray-600'}"
-																		on:click={() => (currentIndex = i)}
-																		aria-label={$i18n.t('Go to slide {{number}}', {
-																			number: i + 1
-																		})}
-																	/>
-																{/each}
-															</div>
-														</div>
-													{/if}
-												{/each}
+														{/if}
+													</div>
+												</div>
 											</div>
 										</div>
 									</div>
@@ -407,3 +514,98 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	.chat-bubble {
+		background: #fff;
+		color: #222;
+		border-radius: 1.5rem;
+		padding: 1rem 2rem;
+		box-shadow: 0 2px 16px 0 rgba(0, 0, 0, 0.07);
+		font-size: 1.15rem;
+		font-weight: 500;
+		max-width: 340px;
+		text-align: left;
+		min-height: 48px;
+	}
+	.chat-bubble-secondary {
+		background: #e6f0ff;
+		color: #222;
+		border-radius: 1.5rem;
+		padding: 1rem 2rem;
+		box-shadow:
+			0 4px 16px 0 rgba(0, 0, 0, 0.08),
+			0 1.5px 4px 0 rgba(0, 0, 0, 0.04);
+		font-size: 1.05rem;
+		font-weight: 400;
+		max-width: 320px;
+		text-align: left;
+		min-height: 44px;
+		z-index: 20;
+		position: relative;
+	}
+	.carousel-image {
+		margin-top: -26px;
+		margin-left: -16px;
+		z-index: 10;
+	}
+	.carousel-stack {
+		min-height: 340px;
+		width: 100%;
+		position: relative;
+	}
+	.carousel-bubble-container {
+		width: 100%;
+		height: 100%;
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		pointer-events: none;
+	}
+	.carousel-stack-inner {
+		position: absolute;
+		left: 50%;
+		top: 0;
+		transform: translateX(-50%);
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		width: auto;
+		min-width: 0;
+		max-width: none;
+	}
+	.typewriter-box {
+		background: #f8fafc;
+		color: #1a202c;
+		border-radius: 1.5rem;
+		padding: 2rem 2.5rem;
+		box-shadow: 0 2px 16px 0 rgba(0, 0, 0, 0.04);
+		font-size: 1.15rem;
+		font-weight: 500;
+		min-width: 400px;
+		max-width: 400px;
+		width: 400px;
+		height: 282px;
+		text-align: left;
+		display: flex;
+		align-items: flex-start;
+		justify-content: flex-start;
+		margin-top: -32px;
+		margin-left: -16px;
+		z-index: 10;
+	}
+	.typewriter-text {
+		white-space: pre-line;
+		margin: 0;
+		background: none;
+		color: inherit;
+		font-size: 1.08rem;
+		line-height: 1.6;
+		width: 100%;
+	}
+</style>
