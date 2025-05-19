@@ -1288,7 +1288,13 @@
 	"Albert helps you chat with your documents.": "Albert vous aide à discuter avec vos documents.",
 	"AI ❤️ Internet": "IA ❤️ Internet",
 	"Albert can use the internet to answer your questions.": "Albert peut utiliser internet pour répondre à vos questions.",
-	"ai_for_public_services": "IA\npour\nles services publics",
+	"ai_for_public_services": "L'IA des agents\n publics",
 	"What is ProConnect ?": "Qu'est-ce que ProConnect ?",
-	"What is ProConnect ? - New window": "Qu'est-ce que ProConnect ? - Nouvelle fenêtre"
+	"What is ProConnect ? - New window": "Qu'est-ce que ProConnect ? - Nouvelle fenêtre",
+	"carousel_item_1_chat1": "Peux-tu résumer ce document pour moi 📖 ?",
+	"carousel_item_1_chat2": "Bien sûr ! Voici un résumé concis du document que vous avez fourni.",
+	"carousel_item_1_typewriter": "Résumé du document administratif :\nCe document présente les nouvelles procédures de gestion des congés pour les agents publics. Les demandes doivent être soumises via le portail interne, validées par le responsable hiérarchique, puis traitées...",
+	"carousel_item_2_chat1": "Peux-tu créer un formulaire web pour moi ?",
+	"carousel_item_2_chat2": "Bien entendu ! Voici votre formulaire web.",
+	"carousel_subtitle": "{{WEBUI_NAME}} est votre assistant IA pour les services publics, conçu pour vous aider dans vos tâches quotidiennes."
 }
