@@ -9,7 +9,6 @@ services:
     volumes:
       - albert-conversation:/app/backend/data
       - ./src:/app/src
-      - ./backend:/app/backend
       - ./package.json:/app/package.json
       - ./package-lock.json:/app/package-lock.json
     ports:
