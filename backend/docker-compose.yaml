@@ -1,0 +1,17 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  redis:
+     name: ${COMPOSE_PROJECT_NAME}_redis
