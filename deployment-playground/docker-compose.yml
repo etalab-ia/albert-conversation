@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:17.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pg_isready -U $$POSTGRES_USER -h $$(hostname -i)"]
+      interval: 10s
+      start_period: 30s
+
+  minio:
+    image: minio/minio:RELEASE.2024-06-06T09-36-42Z
+    environment:
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: password
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  redis:
+    image: docker.io/valkey/valkey:8.0.1-alpine
+    container_name: redis-valkey
+    volumes:
+      - redis:/data
+    command: "valkey-server --save 30 1"
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
+    healthcheck:
+      test: "[ $$(valkey-cli ping) = 'PONG' ]"
+      start_period: 5s
+      interval: 1s
+      timeout: 3s
+      retries: 5
+
+  albertconversation:
+    # Last stable version, see full list here: https://github.com/open-webui/open-webui/releases
+    image: ghcr.io/etalab-ia/albert-conversation/app:issue-alb-150
+    ports:
+      - "8080:8080"
+    environment:
+      GLOBAL_LOG_LEVEL: DEBUG
+      WEBUI_SECRET_KEY: fohjeiSohc2phiGheex1
+
+      ENABLE_OLLAMA_API: false
+      ENABLE_OPENAI_API: true
+      ENABLE_CODE_EXECUTION: false
+      ENABLE_AUTOCOMPLETE_GENERATION: false
+      ENABLE_EVALUATION_ARENA_MODELS: false
+      ENABLE_TAGS_GENERATION: false
+
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/postgres
+
+      ENABLE_WEBSOCKET_SUPPORT: true
+      WEBSOCKET_MANAGER: redis
+      WEBSOCKET_REDIS_URL: "redis://redis:6379/1"
+
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+
+      # Documentation: https://docs.openwebui.com/getting-started/env-configuration/#cloud-storage
+      STORAGE_PROVIDER: s3
+      S3_ACCESS_KEY_ID: admin
+      S3_SECRET_ACCESS_KEY: password
+      S3_ADDRESSING_STYLE: "path"
+      S3_BUCKET_NAME: "openwebui"
+      S3_ENDPOINT_URL: "http://minio:9000/"
+      S3_KEY_PREFIX: "albertconversation"
+      S3_REGION_NAME: "us-east-1"
+
+      OPENAI_API_BASE_URLS: ${ALBERT_OPENAI_API_URL}
+      OPENAI_API_KEY: ${ALBERT_OPENAI_API_KEY}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+
+volumes:
+  postgres:
+     name: ${COMPOSE_PROJECT_NAME}_postgres
+  minio:
+     name: ${COMPOSE_PROJECT_NAME}_minio
+  redis:
+     name: ${COMPOSE_PROJECT_NAME}_redis
