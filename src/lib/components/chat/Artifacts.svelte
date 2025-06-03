@@ -36,11 +36,12 @@
 		getContents();
 	}
 
-	console.log("FINAL CONTENTS", contents);
-	console.log("SHOW ARTIFACTS:", $showArtifacts);
+	
 
 	const getContents = () => {
 		contents = [];
+		let allMarkdownContent = ''; // <-- outside the loop
+
 		messages.forEach((message: any) => {
 			if (message?.role !== 'user' && message?.content) {
 				const codeBlockContents = message.content.match(/```[\s\S]*?```/g);
@@ -73,6 +74,8 @@
 						markdownContent += code + '\n';
 					}
 				});
+				
+				allMarkdownContent += markdownContent;
 
 				const inlineHtml = message.content.match(/<html>[\s\S]*?<\/html>/gi);
 				const inlineCss = message.content.match(/<style>[\s\S]*?<\/style>/gi);
@@ -139,14 +142,10 @@
 			}
 		});
 
-		const hasValidContent = contents.some(c => ['iframe', 'svg', 'markdown'].includes(c.type));
-
-		if (!hasValidContent) {
+		console.log("This is all the markdown content", allMarkdownContent)
+		if (contents.length === 0 && allMarkdownContent.trim() === '') {
 			showControls.set(false);
 			showArtifacts.set(false);
-		} else {
-			showControls.set(true);
-			showArtifacts.set(true);
 		}
 
 		selectedContentIdx = contents ? contents.length - 1 : 0;
