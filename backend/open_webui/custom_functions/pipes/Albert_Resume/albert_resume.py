@@ -402,8 +402,24 @@ class Pipe:
             response = session.get(url)
             chunks = [chunk["content"] for chunk in response.json()["data"]]
             map_reduce_outputs = []
-            for i, chunk in enumerate(chunks):
-                percent = int(((i + 1) / len(chunks)) * 100)
+            import asyncio
+            
+            async def process_chunk(chunk):
+                prompt = SUM_PROMPT_USER.format(context=chunk)
+                messages_sum = [
+                    {"role": "system", "content": SUM_PROMPT_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ]
+                output = custom_model_albert(
+                    messages=messages_sum, max_tokens=400
+                ).content
+                return output
+            
+            # Process chunks in batches of 5
+            batch_size = 3
+            for i in range(0, len(chunks), batch_size):
+                batch = chunks[i:i+batch_size]
+                percent = int(((i + len(batch)) / len(chunks)) * 100)
                 await __event_emitter__(
                     {
                         "type": "status",
@@ -414,16 +430,11 @@ class Pipe:
                         },
                     }
                 )
-
-                prompt = SUM_PROMPT_USER.format(context=chunk)
-                messages_sum = [
-                    {"role": "system", "content": SUM_PROMPT_SYSTEM},
-                    {"role": "user", "content": prompt},
-                ]
-                output = custom_model_albert(
-                    messages=messages_sum, max_tokens=400
-                ).content
-                map_reduce_outputs.append(output)
+                
+                # Process batch concurrently
+                batch_tasks = [process_chunk(chunk) for chunk in batch]
+                batch_results = await asyncio.gather(*batch_tasks)
+                map_reduce_outputs.extend(batch_results)
             await __event_emitter__(
                 {
                     "type": "status",
