@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { onMount, getContext, createEventDispatcher } from 'svelte';
+	import BlockNoteWrapper from '../common/BlockNoteWrapper2';
 	const i18n = getContext('i18n');
 	const dispatch = createEventDispatcher();
-
 	import { chatId, settings, showArtifacts, showControls } from '$lib/stores';
 	import XMark from '../icons/XMark.svelte';
 	import { copyToClipboard, createMessagesList } from '$lib/utils';
@@ -13,10 +13,15 @@
 	import ArrowLeft from '../icons/ArrowLeft.svelte';
 
 	export let overlay = false;
-	export let history;
-	let messages = [];
+	export let history: any;
+	let messages: any[] = [];
 
-	let contents: Array<{ type: string; content: string }> = [];
+	interface ContentItem {
+		type: string;
+		content: string;
+	}
+
+	let contents: ContentItem[] = [];
 	let selectedContentIdx = 0;
 
 	let copied = false;
@@ -32,13 +37,14 @@
 
 	const getContents = () => {
 		contents = [];
-		messages.forEach((message) => {
+		messages.forEach((message: any) => {
 			if (message?.role !== 'user' && message?.content) {
 				const codeBlockContents = message.content.match(/```[\s\S]*?```/g);
-				let codeBlocks = [];
-
+				console.debug("CODE BLOCK CONTENTS", codeBlockContents);
+				let codeBlocks: Array<{ lang: string; code: string }> = [];
+				
 				if (codeBlockContents) {
-					codeBlockContents.forEach((block) => {
+					codeBlockContents.forEach((block: string) => {
 						const lang = block.split('\n')[0].replace('```', '').trim().toLowerCase();
 						const code = block.replace(/```[\s\S]*?\n/, '').replace(/```$/, '');
 						codeBlocks.push({ lang, code });
@@ -48,37 +54,40 @@
 				let htmlContent = '';
 				let cssContent = '';
 				let jsContent = '';
+				let markdownContent = '';
 
 				codeBlocks.forEach((block) => {
 					const { lang, code } = block;
-
+					console.log("LANG", lang);
 					if (lang === 'html') {
 						htmlContent += code + '\n';
 					} else if (lang === 'css') {
 						cssContent += code + '\n';
 					} else if (lang === 'javascript' || lang === 'js') {
 						jsContent += code + '\n';
+					} else if (lang === 'md' || lang === 'markdown') {
+						markdownContent += code + '\n';
 					}
 				});
 
 				const inlineHtml = message.content.match(/<html>[\s\S]*?<\/html>/gi);
 				const inlineCss = message.content.match(/<style>[\s\S]*?<\/style>/gi);
 				const inlineJs = message.content.match(/<script>[\s\S]*?<\/script>/gi);
-
+				
 				if (inlineHtml) {
-					inlineHtml.forEach((block) => {
+					inlineHtml.forEach((block: string) => {
 						const content = block.replace(/<\/?html>/gi, ''); // Remove <html> tags
 						htmlContent += content + '\n';
 					});
 				}
 				if (inlineCss) {
-					inlineCss.forEach((block) => {
+					inlineCss.forEach((block: string) => {
 						const content = block.replace(/<\/?style>/gi, ''); // Remove <style> tags
 						cssContent += content + '\n';
 					});
 				}
 				if (inlineJs) {
-					inlineJs.forEach((block) => {
+					inlineJs.forEach((block: string) => {
 						const content = block.replace(/<\/?script>/gi, ''); // Remove <script> tags
 						jsContent += content + '\n';
 					});
@@ -109,6 +118,12 @@
                         </html>
                     `;
 					contents = [...contents, { type: 'iframe', content: renderedContent }];
+
+					
+				} else if (markdownContent.trim()) {
+					contents = [...contents, { type: 'markdown', content: markdownContent.trim() }];
+					console.log("MARKDOWN CONTENT", markdownContent);
+					
 				} else {
 					// Check for SVG content
 					for (const block of codeBlocks) {
@@ -140,43 +155,43 @@
 	}
 
 	const iframeLoadHandler = () => {
-		iframeElement.contentWindow.addEventListener(
-			'click',
-			function (e) {
-				const target = e.target.closest('a');
-				if (target && target.href) {
-					e.preventDefault();
-					const url = new URL(target.href, iframeElement.baseURI);
-					if (url.origin === window.location.origin) {
-						iframeElement.contentWindow.history.pushState(
-							null,
-							'',
-							url.pathname + url.search + url.hash
-						);
-					} else {
-						console.log('External navigation blocked:', url.href);
+		if (iframeElement.contentWindow) {
+			iframeElement.contentWindow.addEventListener(
+				'click',
+				function (e) {
+					const target = (e.target as Element)?.closest('a');
+					if (target && (target as HTMLAnchorElement).href) {
+						e.preventDefault();
+						const url = new URL((target as HTMLAnchorElement).href, iframeElement.baseURI);
+						if (url.origin === window.location.origin && iframeElement.contentWindow) {
+							iframeElement.contentWindow.history.pushState(
+								null,
+								'',
+								url.pathname + url.search + url.hash
+							);
+						} else {
+							console.log('External navigation blocked:', url.href);
+						}
 					}
-				}
-			},
-			true
-		);
+				},
+				true
+			);
 
-		// Cancel drag when hovering over iframe
-		iframeElement.contentWindow.addEventListener('mouseenter', function (e) {
-			e.preventDefault();
-			iframeElement.contentWindow.addEventListener('dragstart', (event) => {
-				event.preventDefault();
+			// Cancel drag when hovering over iframe
+			iframeElement.contentWindow.addEventListener('mouseenter', function (e) {
+				e.preventDefault();
+				if (iframeElement.contentWindow) {
+					iframeElement.contentWindow.addEventListener('dragstart', (event) => {
+						event.preventDefault();
+					});
+				}
 			});
-		});
+		}
 	};
 
 	const showFullScreen = () => {
 		if (iframeElement.requestFullscreen) {
 			iframeElement.requestFullscreen();
-		} else if (iframeElement.webkitRequestFullscreen) {
-			iframeElement.webkitRequestFullscreen();
-		} else if (iframeElement.msRequestFullscreen) {
-			iframeElement.msRequestFullscreen();
 		}
 	};
 
@@ -317,6 +332,10 @@
 								className=" w-full h-full max-h-full overflow-hidden"
 								svg={contents[selectedContentIdx].content}
 							/>
+						{:else if contents[selectedContentIdx].type === 'markdown'}
+							<div class="w-full h-full max-h-full overflow-hidden bg-white dark:bg-gray-900">
+								<blocknote-wrapper content={contents[selectedContentIdx].content} />
+							</div>
 						{/if}
 					</div>
 				{:else}
