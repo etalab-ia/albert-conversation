@@ -3,7 +3,7 @@ import { BlockNoteView } from '@blocknote/mantine';
 import '@blocknote/mantine/style.css';
 import { useEffect } from 'react';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { OPENAI_API_BASE_URL } from '$lib/constants';
+import { WEBUI_BASE_URL } from '$lib/constants';
 import { en } from '@blocknote/core/locales';
 import { en as aiEn } from '@blocknote/xl-ai/locales';
 import {
@@ -23,12 +23,11 @@ import {
 } from "@blocknote/xl-ai";
 import '@blocknote/xl-ai/style.css'; // add the AI stylesheet
 
-console.log('OPENAI_API_BASE_URL', OPENAI_API_BASE_URL);
 
 const provider = createOpenAICompatible({
-	baseURL: "http://localhost:8080/api",
+	baseURL: WEBUI_BASE_URL + '/api',
 	name: 'abert-etalab',
-	apiKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEwN2QxMGM0LTU5MWYtNGI0My1hMjNmLTZlYzFkNWZkYmQ2OSJ9.5LD2Xsb29iC0RVPPJNgFX9fOPeHX0HiWGEe46lBUrKs'
+	apiKey: localStorage.getItem('token') || ''
 });
 
 const model = provider('albert-small');
@@ -57,8 +56,6 @@ export default function BlockNote({ content }: { content: string }) {
     
 	}, []);
 
-  console.log("something !!!!")
-	// Renders the editor instance using a React component.
 	return (
 		<BlockNoteView
 			theme={'light'}
