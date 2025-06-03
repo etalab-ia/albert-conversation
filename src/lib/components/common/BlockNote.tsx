@@ -23,14 +23,16 @@ import {
 } from "@blocknote/xl-ai";
 import '@blocknote/xl-ai/style.css'; // add the AI stylesheet
 
+console.log('OPENAI_API_BASE_URL', OPENAI_API_BASE_URL);
+
 const provider = createOpenAICompatible({
-	baseURL: OPENAI_API_BASE_URL,
+	baseURL: "http://localhost:8080/api",
 	name: 'abert-etalab',
-	apiKey: 'etalab-1JN17pHtJBVAmiuEmIuAJzS7MNF1AsyIpCcUmVA1V2SipB8JBH3v0YKH5MlCK0K3'
+	apiKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEwN2QxMGM0LTU5MWYtNGI0My1hMjNmLTZlYzFkNWZkYmQ2OSJ9.5LD2Xsb29iC0RVPPJNgFX9fOPeHX0HiWGEe46lBUrKs'
 });
 
 const model = provider('albert-small');
-console.log('MODEL', model);
+
 
 export default function BlockNote({ content }: { content: string }) {
 	// Creates a new editor instance.
