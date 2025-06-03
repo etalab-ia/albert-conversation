@@ -30,10 +30,14 @@
 	$: if (history) {
 		messages = createMessagesList(history, history.currentId);
 		getContents();
+
 	} else {
 		messages = [];
 		getContents();
 	}
+
+	console.log("FINAL CONTENTS", contents);
+	console.log("SHOW ARTIFACTS:", $showArtifacts);
 
 	const getContents = () => {
 		contents = [];
@@ -135,9 +139,14 @@
 			}
 		});
 
-		if (contents.length === 0) {
+		const hasValidContent = contents.some(c => ['iframe', 'svg', 'markdown'].includes(c.type));
+
+		if (!hasValidContent) {
 			showControls.set(false);
 			showArtifacts.set(false);
+		} else {
+			showControls.set(true);
+			showArtifacts.set(true);
 		}
 
 		selectedContentIdx = contents ? contents.length - 1 : 0;

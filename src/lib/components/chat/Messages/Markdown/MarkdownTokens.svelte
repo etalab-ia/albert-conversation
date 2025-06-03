@@ -83,8 +83,11 @@
 		<svelte:element this={headerComponent(token.depth)} dir="auto">
 			<MarkdownInlineTokens id={`${id}-${tokenIdx}-h`} tokens={token.tokens} {onSourceClick} />
 		</svelte:element>
-	{:else if token.type === 'code'}
-		{#if token.raw.includes('```')}
+		{:else if token.type === 'code'}
+	{#if token.raw.includes('```')}
+		{#if ['markdown', 'md'].includes(token.lang?.toLowerCase())}
+			<!-- Do not render anything for markdown/md blocks -->
+		{:else}
 			<CodeBlock
 				id={`${id}-${tokenIdx}`}
 				collapsed={$settings?.collapseCodeBlocks ?? false}
@@ -104,9 +107,11 @@
 					});
 				}}
 			/>
-		{:else}
-			{token.text}
 		{/if}
+	{:else}
+		{token.text}
+	{/if}
+
 	{:else if token.type === 'table'}
 		<div class="relative w-full group">
 			<div class="scrollbar-hidden relative overflow-x-auto max-w-full rounded-lg">
