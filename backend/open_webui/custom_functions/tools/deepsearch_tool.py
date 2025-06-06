@@ -10,12 +10,14 @@ import threading
 import uvloop
 import re
 
-dotenv.load_dotenv('open_webui/functions/.env')
+dotenv.load_dotenv('open_webui/custom_functions/.env')
 ALBERT_KEY = os.getenv('ALBERT_KEY')
 ALBERT_URL = os.getenv('ALBERT_URL')
 
 BRAVE_KEY =  os.getenv('BRAVE_KEY')
 COLLECTIONS = os.getenv('COLLECTIONS')
+
+print("ALBERT_URL : ", ALBERT_URL)
 
 response = requests.get(url=f"{ALBERT_URL}/collections", headers={"Authorization": f"Bearer {ALBERT_KEY}"})
 collections_dict = {}
@@ -180,7 +182,7 @@ class AsyncHelper:
             "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": 0,
+            "temperature": 0.1,
         }
         try:
             async with session.post(url=f"{ALBERT_URL}/chat/completions", json=payload, headers=headers) as resp:
@@ -365,7 +367,7 @@ class AsyncHelper:
         return report or "Failed to generate a report.", messages[1]["content"]
 
     @staticmethod
-    async def process_link(session, token_counter, link, user_query, search_query, log, lang='fr', num_queries=2):
+    async def process_link(session, token_counter, link, user_query, search_query, log, lang='fr', num_queries=2, event_emitter=None):
         log.append(f"Fetching content from: {link}")
         page_text = await AsyncHelper.fetch_webpage_text_async(session, link)
         if not page_text:
@@ -373,15 +375,17 @@ class AsyncHelper:
             return ''
         usefulness = await AsyncHelper.is_page_useful_async(session, token_counter, user_query, page_text, lang)
         log.append(f"Page usefulness for {link}: {usefulness}")
+        await emit_status(event_emitter, f"Je lis le contenu de {link}...")
         if usefulness == "Oui" and num_queries > 1:
             context = await AsyncHelper.extract_relevant_context_async(session, token_counter, user_query, search_query, page_text, lang=lang)
             if context:
                 print(f"Extracted context from {link} (first 200 chars): {context[:200]}")
                 log.append(f"Extracted context from {link} (first 200 chars): {context[:200]}")
-                return context
+                await emit_status(event_emitter, f"J'ai extrait le contenu pertinent de {link}...")
+                return str([link]) + context
         elif num_queries == 1:
             print(f"Page text from {link} sent directly (simple search)")
-            return page_text
+            return str([link]) +page_text
         return ''
 
     @staticmethod
@@ -430,6 +434,13 @@ class AsyncHelper:
 
         return extracted_contexts
 
+async def emit_status(event_emitter, description):
+    await event_emitter(
+        {
+            "type": "status",
+            "data": {"description": description, "done": False, "hidden": False},
+        }
+    )
 
 async def async_research(user_query, internet, iteration_limit, prompt_suffix=None, max_tokens=1024, num_queries=2, k=5, lang='fr', collections=None, user=None, request=None, event_emitter=None):
     start_time = time.time()
@@ -439,6 +450,8 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
     log_messages = []
     iteration = 0
     token_counter = TokenCounter()
+
+    #await emit_status(event_emitter, "Je cherche dans le rag...")
     
     # Input validation
     if not user_query or not user_query.strip():
@@ -452,6 +465,7 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
             log_messages.append(f"Starting research for: {user_query}")
             log_messages.append("Generating initial search queries...")
+            await emit_status(event_emitter, "J'évalue la demande...")
             
             new_search_queries = await AsyncHelper.generate_search_queries_async(session, token_counter, user_query, num_queries, lang)
             
@@ -462,12 +476,14 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
             all_search_queries.extend(new_search_queries)
             log_messages.append(f"Initial search queries: {new_search_queries}")
             print(f"Initial search queries: {new_search_queries}")
+            await emit_status(event_emitter, f"Je cherche {', '.join(new_search_queries)}...")
 
             while iteration < iteration_limit:
                 log_messages.append(f"\n=== Iteration {iteration + 1} ===")
                 iteration_contexts = []
                 
                 if internet:
+                    await emit_status(event_emitter, "Je me connecte à internet...")
                     print("LAUNCHING INTERNET SEARCH")
                     search_results = []
                     for query in new_search_queries[:num_queries]:
@@ -486,7 +502,7 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                         log_messages.append("No links found in this iteration.")
                     else:
                         link_tasks = [
-                            AsyncHelper.process_link(session, token_counter, link, user_query, unique_links[link], log_messages, lang, num_queries)
+                            AsyncHelper.process_link(session, token_counter, link, user_query, unique_links[link], log_messages, lang, num_queries, event_emitter)
                             for link in unique_links
                         ]
                         link_results = await asyncio.gather(*link_tasks)
@@ -494,6 +510,10 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                         aggregated_chunks.extend([link for link in unique_links])
                 else:
                     print("LAUNCHING RAG SEARCH")
+                    if num_queries > 1:
+                        await emit_status(event_emitter, "Je lance une recherche approndie dans les bases de connaissances disponibles...")
+                    else:
+                        await emit_status(event_emitter, "Je lance une recherche dans les bases de connaissances disponibles...")
                     search_api_tasks = [AsyncHelper.process_query_api(session, token_counter, user_query, search, k, log_messages, lang, collections, user, request) for search in new_search_queries[:num_queries]]
                     useful_docs_lists = await asyncio.gather(*search_api_tasks)
                     
@@ -509,6 +529,8 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                                 useful_docs.append(doc)
                     
                     print(f"Useful docs after deduplication: {len(useful_docs)}")
+
+                    await emit_status(event_emitter, f"J'ai trouvé {len(useful_docs)} documents pertinents...")
                     
                     if useful_docs and num_queries > 1: # if we have more than one query it's complex, we need to process the docs
                         iteration_contexts = await AsyncHelper.process_useful_api_docs(session, token_counter, user_query, useful_docs, log_messages, lang)
@@ -516,6 +538,8 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                     else:
                         iteration_contexts = useful_docs
                         aggregated_chunks.extend(useful_docs)
+
+                    await emit_status(event_emitter, "J'ai fini de lire les documents pertinents...")
 
                 if iteration_contexts:
                     aggregated_contexts.extend(iteration_contexts)
@@ -543,12 +567,14 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                 iteration += 1
 
             log_messages.append("\nGenerating final report...")
+            await emit_status(event_emitter, "Les recherches sont terminées ! Je résume les informations que j'ai trouvé...")
+
             if num_queries > 1:
                 final_report, final_prompt = await AsyncHelper.generate_final_report_async(
                     session, token_counter, user_query, aggregated_contexts, '', prompt_suffix, max_tokens, lang
                 )
             else:
-                final_report, final_prompt = str(aggregated_contexts) + "\n Voilà les documents que j'ai trouvé pour ta recherche, résumes ces informations dans final_answer en format markdown pour répondre à la question. Donnes les sources et liens intéressants si il y en a. CETTE REPONSE N'EST PAS COMPLETE, TU DOIS RESUMER CES INFORMATIONS DANS final_answer.", ""
+                final_report, final_prompt = str(aggregated_contexts) + "\n Voilà les documents que j'ai trouvé pour ta recherche, utilises ces informations pour répondre à la question de l'utilisateur avec final_answer en format markdown. Donnes les sources et liens intéressants si il y en a. CETTE REPONSE N'EST PAS COMPLETE, TU DOIS REDIGER LA REPONSE dans final_answer.", ""
             
             total_input_tokens, total_output_tokens = await token_counter.get_totals()
             elapsed_time = time.time() - start_time
@@ -577,7 +603,7 @@ async def async_research(user_query, internet, iteration_limit, prompt_suffix=No
                 }
             )
 
-            return final_report + "\nSi cette réponse convient, appelle juste final_answer(ta_variable) pour l'envoyer à l'utilisateur. Sinon continue les recherches ou pose une question à l'utilisateur.", "\n".join(log_messages), final_prompt, total_input_tokens, total_output_tokens, aggregated_chunks, elapsed_time
+            return final_report + " \n\nSi cette réponse convient, appelle juste final_answer(ta_variable) pour l'envoyer à l'utilisateur. Sinon continue les recherches ou pose une question à l'utilisateur.", "\n".join(log_messages), final_prompt, total_input_tokens, total_output_tokens, aggregated_chunks, elapsed_time
             
     except Exception as e:
         error_msg = f"Error during research: {str(e)}"

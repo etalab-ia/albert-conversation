@@ -310,7 +310,7 @@ class Pipe:
                     },
                 }
             )
-            log.info("REPONSE SOMMAIRE:", response)
+            log.info(f"REPONSE SOMMAIRE: {response}")
             state_dict["response_sommaire"] = response
             # User cancelled
             if response is False:
@@ -466,9 +466,7 @@ class Pipe:
                     },
                 }
             )
-            # body["resume"] = resume
             state_dict["resume"] = resume
-            # body["step"] = 41
             state_dict["step"] = 41
             update_state(synth_id, state_dict)
             await __event_emitter__(
@@ -491,7 +489,7 @@ class Pipe:
             user_modif = last_user_message
 
             # Search chunks to get some context if needed
-            log.info("COLLECTION : ", state_dict["collection_id"])
+            log.info(f"COLLECTION : {state_dict['collection_id']}")
             data = {
                 "collections": [int(state_dict["collection_id"])],
                 "k": 2,
@@ -517,7 +515,7 @@ class Pipe:
                 {"role": "system", "content": SUM_PROMPT_SYSTEM},
                 {"role": "user", "content": update_resume_prompt},
             ]
-            log.info("MODIF NEEDED:\n", update_resume_prompt)
+            log.info(f"MODIF NEEDED:\n {update_resume_prompt}")
             resume_corrige = custom_model_albert(
                 messages=messages_merge, max_tokens=1024
             ).content
@@ -635,7 +633,7 @@ Merci pour votre confiance ! 😊
                         f"{OPENAI_API_BASE_URL}/collections/{state_dict['collection_id']}"
                     )
                 except Exception as e:
-                    log.info(f"No collections to delete ({response.tex})")
+                    log.info(f"No collections to delete ({response.text})")
                     log.info(e)
                 if state_dict["response_sommaire"] is False:
                     message = "#### Le pipeline a été annulé."
