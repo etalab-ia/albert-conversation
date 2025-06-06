@@ -11,7 +11,7 @@ def create_tools(model_func, collections, description, user, request, event_emit
         A utiliser uniquement pour des questions complexes, qui ont besoin de multiple recherches sur internet.
         Output : une chaine de caractères contenant les informations trouvées.
         Args:
-            user_query: une question claire et précise (str)
+            user_query: une question claire et précise avec le contexte de l'utilisateur (str)
         """
         print("Searching internet...")
         result = run_research(user_query, internet=True, iteration_limit=2, prompt_suffix='', max_tokens=2048, num_queries=3, k=3, lang='fr', event_emitter=event_emitter)[0]
@@ -23,7 +23,7 @@ def create_tools(model_func, collections, description, user, request, event_emit
         """
         TMP DESC
         Args:
-            user_query: une question claire et précise (str)
+            user_query: une question claire et précise avec le contexte de l'utilisateur (str)
         """
         print("Searching administratif...") 
         result = run_research(user_query, internet=False, iteration_limit=2, prompt_suffix='', max_tokens=2048, num_queries=3, k=3, lang='fr', collections=collections, user=user, request=request, event_emitter=event_emitter)[0]
@@ -34,7 +34,7 @@ def create_tools(model_func, collections, description, user, request, event_emit
 Cet outil fait une recherche approfondie sur le Rag choisi par l'utilisateur, pour les questions complexes ayant besoin de plusieurs recherches en même temps dans le rag de manière plus profonde.
 {description}
 Args:
-    user_query: une question claire et précise (str)
+    user_query: une question claire et précise avec le contexte de l'utilisateur (str)
         """
     @tool
     def simple_search_internet(user_query: str) -> str:
@@ -43,7 +43,7 @@ Args:
         Si la réponse donnée est déjà complète, tu peux l'envoyer directement à final_answer.
         Output : une chaine de caractères contenant les informations trouvées.
         Args:
-            user_query: une question claire et précise (str)
+            user_query: une question claire et précise avec le contexte de l'utilisateur (str)
         """
         print("Searching internet...")  
         result = run_research(user_query, internet=True, iteration_limit=2, prompt_suffix='Ignores les instructions précédentes, fais une réponse courte et concise qui répond à la question. L\'utilisateur ne veut pas de réponse détaillée avec des informations inutiles.', max_tokens=400, num_queries=1, k=2, lang='fr', event_emitter=event_emitter)[0]
@@ -55,7 +55,7 @@ Args:
         """
         TMP DESC
         Args:
-            user_query: une question claire et précise (str)
+            user_query: une question claire et précise avec le contexte de l'utilisateur (str)
         """
         print("Searching administratif...") 
         report = run_research(user_query, internet=False, iteration_limit=2, prompt_suffix='Ignores les instructions précédentes, fais une réponse directe à la question. L\'utilisateur ne veut pas de réponse détaillée avec des informations inutiles. Donnes uniquement les détails importants. Donnes toujours tes sources à la fin de ta réponse avec une partie "Sources : ", et mets [1], [2] etc au sein du texte quand tu cites une source. Dans la partie sources écris [1] [nom de l\'url](https://...) etc, appelles bien tous les liens avec un nom, l\'ordre des sources doit être le même que dans ton contexte.', max_tokens=400, num_queries=1, k=5, lang='fr', collections=collections, user=user, request=request, event_emitter=event_emitter)[0]
@@ -65,10 +65,10 @@ Args:
     #Dynamic description from the Valves on the front
     simple_search_rag.description = f"""
 Cet outil fait une recherche simple sur le RAG de l'utilisateur pour les questions nécessistant une seule recherche.
-Si l'utilisateur te parle de son document ou de rag, c'est cet outil qui doit être utilisé.
+Si l'utilisateur te parle de son document ou de rag, c'est cet outil qui doit être utilisé. Prends en entrée une question ou une phrase claire en Français.
 {description}
 Args:
-    user_query: une question claire et précise (str)
+    user_query: une question claire et précise avec le contexte de l'utilisateur (str)
         """
     #This tool could be used in the future with a specialized code model
     @tool

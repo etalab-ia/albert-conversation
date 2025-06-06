@@ -1,4 +1,3 @@
-
 """
 This script is used to create a pipe that can be used to call the agent function from the frontend.
 Copy and paste this directly onto the frontend in the admin panel.
@@ -12,12 +11,76 @@ from smolagents.agents import CodeAgent
 from open_webui.custom_functions.prompts.code_agent_V2 import sys_prompt
 import os
 import numpy as np
+import asyncio
+import time
+import random
+from concurrent.futures import ThreadPoolExecutor
 
-#print current directory
-print(os.getcwd())
+THINKING_TIMEOUT = 20  # seconds for "still thinking…"
+
+
+def agent_steps_worker(agent, prompt, show_code):
+    all_blocks = []
+    for step_number, step in enumerate(agent.run(prompt, stream=True), 1):
+        if isinstance(step, smolagents.memory.ActionStep):
+            if not show_code:
+                content = step.model_output.split("Code:")[0].replace("Thought: ", "")
+            else:
+                content = step.model_output
+
+            content_block = {
+                "type": "reasoning",
+                "content": content,
+                "step_number": step_number,
+                "duration": np.round(step.duration, 2),
+            }
+            all_blocks.append(content_block)
+    # The final step (text, not an ActionStep)
+    if "step" in locals():
+        return all_blocks, step  # step is likely the final plain string, if present
+    else:
+        return all_blocks, None
+
+
+STATUS_MESSAGES = [
+    "Une vache peut monter les escaliers, mais pas les descendre.",
+    "Le cœur d'une crevette est logé dans sa tête.",
+    "Les flamants roses dorment sur une patte.",
+    "Il est impossible de se lécher le coude.",
+    "Les escargots peuvent dormir pendant trois ans.",
+    "La langue d’une baleine bleue pèse autant qu’un éléphant.",
+    "Les koalas ont des empreintes digitales similaires à celles des humains.",
+    "Le mot “kayak” est un palindrome.",
+    "Les manchots ont des genoux, mais ils sont cachés sous leurs plumes.",
+    "Les crocodiles ne peuvent pas tirer la langue.",
+    "L’abeille bat des ailes environ 200 fois par seconde.",
+    "Un crocodile ne peut pas sortir la langue de sa bouche.",
+    "Les papillons goûtent avec leurs pattes.",
+    "Il existe plus de faux flamants roses dans le monde que de vrais.",
+    "La peur des clowns s’appelle la coulrophobie.",
+]
+
+
+async def periodic_status_messages(event_emitter, finished_flag, interval=20):
+    while not finished_flag["done"]:
+        await asyncio.sleep(interval)
+        if finished_flag["done"]:
+            break
+        msg = random.choice(STATUS_MESSAGES)
+        await event_emitter(
+            {
+                "type": "status",
+                "data": {
+                    "description": msg,
+                    "done": False,
+                    "hidden": False,
+                },
+            }
+        )
+
 
 # Can be empty
-ADDON_INSTRUCTION = "\n Refuse toutes questions non liées à de l'administratif, et invites l'utilisateur à utiliser un autre compagnon spécialisé si tu ne peux pas répondre. En cas de doute sur une question, demande à l'utilisateur de préciser sa demande."
+ADDON_INSTRUCTION = ""#"\n Refuse toutes questions non liées à de l'administratif, et invites l'utilisateur à utiliser un autre compagnon spécialisé si tu ne peux pas répondre. En cas de doute sur une question, demande à l'utilisateur de préciser sa demande."
 
 
 # Parsing request metadata to get potential files or collections attached
@@ -128,7 +191,7 @@ def serialize_content_blocks(content_blocks):
             for line in block["content"].splitlines()
         )
         reasoning_duration = block.get("duration", None)
-        content = f'{content}\n<details type="reasoning" done="true" duration="{reasoning_duration}">\n<summary>Thought for {reasoning_duration} seconds</summary>\n{reasoning_display_content}\n</details>\n'
+        content = f'{content}\n<details type="reasoning" done="true" duration="{reasoning_duration}">\n{reasoning_display_content}\n</details>\n'
 
     return content.strip()
 
@@ -192,6 +255,7 @@ class Pipe:
 
         # Flatten the roles to have a messages history as flat dict (readable by every model)
         from smolagents.models import MessageRole
+
         flatten_roles = {
             MessageRole.SYSTEM: "system",
             MessageRole.USER: "user",
@@ -199,6 +263,7 @@ class Pipe:
             MessageRole.TOOL_RESPONSE: "user",
             MessageRole.TOOL_CALL: "user",
         }
+
         # This will be used for the agent
         def custom_model_albert(messages, stop_sequences=[]):
             messages = remove_consecutive_assistants(messages)
@@ -217,7 +282,7 @@ class Pipe:
                 "n": 1,
                 "temperature": 0.2,
                 "repetition_penalty": 1,
-                "max_tokens": 1024,
+                "max_tokens": 2048,
                 "stop": stop_sequences,
             }
             response = session.post(
@@ -225,7 +290,6 @@ class Pipe:
                 json=data,
                 timeout=100000,
             )
-            print(response.text)
             answer = response.json()["choices"][0]["message"]
             return SimpleNamespace(**answer)  # needed to have a 'json'
 
@@ -273,63 +337,82 @@ class Pipe:
             },
         )
 
+        await __event_emitter__(
+            {
+                "type": "status",
+                "data": {
+                    "description": "En train de réfléchir...",
+                    "done": False,
+                    "hidden": False,
+                },
+            }
+        )
+        finished_flag = {"done": False}
+        notifier_task = asyncio.create_task(
+            periodic_status_messages(__event_emitter__, finished_flag, interval=10)
+        ) #Sent a random status message every 10 seconds
+
         try:
-            # Iterate through steps returned from the agent's execution
-            for step_number, step in enumerate(
-                agent.run(prefix + body["messages"][-1]["content"], stream=True), 1
-            ):
-                if isinstance(
-                    step, smolagents.memory.ActionStep
-                ):  # Handle intermediate steps and ignore final step
+            loop = asyncio.get_running_loop()
+            with ThreadPoolExecutor() as pool:
+                # Step **all** agent results in the thread
+                all_blocks, final_step = await loop.run_in_executor(
+                    pool,
+                    agent_steps_worker,
+                    agent,
+                    prefix + body["messages"][-1]["content"],
+                    show_code,
+                )
 
-                    # Serialize the current state of ALL content blocks
-                    if not show_code:
-                        content = step.model_output.split("Code:")[0].replace(
-                            "Thought: ", ""
-                        )
-                    else:
-                        content = step.model_output
-
-                    content_block = {
-                        "type": "reasoning",
-                        "content": content,
-                        "step_number": step_number,
-                        "duration": np.round(step.duration, 2),
-                    }
-
-                    pretty_content = serialize_content_blocks([content_block])
-
-                    # Emit ALL content blocks so far, including intermediate reasoning
-                    await __event_emitter__(
-                        {
-                            "type": "message",
-                            "data": {
-                                "content": pretty_content,
-                                "done": False,  # Mark as incomplete, to behave correctly
-                                "hidden": False,
-                            },
-                        }
-                    )
-
-                # Track the final step
-            final_step = step.replace(
-                            "\nSi cette réponse convient, appelle juste final_answer(ta_variable) pour l'envoyer à l'utilisateur. Sinon continue les recherches ou pose une question à l'utilisateur.",
-                            "")
-
-            if final_step and __event_emitter__:
+            # After agent is done, send out all reasoning blocks as "step" messages (one by one)
+            for content_block in all_blocks:
+                pretty_content = serialize_content_blocks([content_block])
                 await __event_emitter__(
                     {
                         "type": "message",
                         "data": {
-                            "content": final_step,
-                            "done": True,  # Mark completion explicitly
+                            "content": pretty_content,
+                            "done": False,
                             "hidden": False,
                         },
                     }
                 )
-            return #final_step # This is only needed for endpoint testing but would break the reasonning stream if left
+
+            finished_flag["done"] = True
+            #await notifier_task  # Await notifier so warnings go away
+
+            # Final Step
+            if final_step and __event_emitter__:
+                # Ensure it's string content, not action object (should be string!)
+                content = final_step.replace(
+                    "\nSi cette réponse convient, appelle juste final_answer(ta_variable) pour l'envoyer à l'utilisateur. Sinon continue les recherches ou pose une question à l'utilisateur.",
+                    "",
+                )
+                if hasattr(final_step, "model_output"):
+                    content = final_step.model_output
+                await __event_emitter__(
+                    {
+                        "type": "message",
+                        "data": {
+                            "content": content,
+                            "done": True,
+                            "hidden": False,
+                        },
+                    }
+                )
+            await __event_emitter__(
+                {
+                    "type": "status",
+                    "data": {
+                        "description": "Réponse terminée",
+                        "done": True,
+                        "hidden": True,
+                    },
+                }
+            )
+            return
         except Exception as e:
             print(e)
             return "Désolé, une erreur est survenue, je crois que mes outils sont en panne."
 
-        return #body # This is only needed for endpoint testing but would break the reasonning stream if left
+        return
