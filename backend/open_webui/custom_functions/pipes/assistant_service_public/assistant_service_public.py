@@ -1,5 +1,5 @@
 """
-title: Albert — France Services
+title: Assistant Service Public
 author: Camille Andre
 version: 0.1
 This pipe should be integrated on the frontend.
@@ -8,7 +8,7 @@ This pipe should be integrated on the frontend.
 from pydantic import BaseModel, Field
 from typing import Literal
 
-from open_webui.custom_functions.pipes.albert_france_services.albert_france_services_settings import (
+from open_webui.custom_functions.pipes.assistant_service_public.assistant_service_public_settings import (
     collection_dict,
     SYSTEM_PROMPT,
     PROMPT,
