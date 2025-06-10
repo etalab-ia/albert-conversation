@@ -22,6 +22,7 @@ ARG GID=0
 
 ######## WebUI frontend ########
 FROM --platform=$BUILDPLATFORM node:22-alpine3.20 AS build
+RUN df -h
 ARG BUILD_HASH
 
 WORKDIR /app
@@ -45,6 +46,7 @@ FROM python:3.11-slim-bookworm AS base
 
 # install uv
 COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
+RUN df -h
 
 # Use args
 ARG USE_CUDA
@@ -118,6 +120,7 @@ RUN echo -n 00000000-0000-0000-0000-000000000000 > $HOME/.cache/chroma/telemetry
 # Make sure the user has access to the app and root directory
 RUN chown -R $UID:$GID /app $HOME
 
+RUN df -h
 RUN if [ "$USE_OLLAMA" = "true" ]; then \
     apt-get update && \
     # Install pandoc and netcat
@@ -142,6 +145,7 @@ RUN if [ "$USE_OLLAMA" = "true" ]; then \
     rm -rf /var/lib/apt/lists/*; \
     fi
 
+RUN df -h
     # copy built frontend files
 COPY --chown=$UID:$GID --from=build /app/build /app/build
 
@@ -154,6 +158,7 @@ RUN uv sync --no-cache-dir --locked
 # activate venv
 RUN . .venv/bin/activate
 
+RUN df -h
 # # Set PyTorch index URL based on CUDA flag
 ARG PYTORCH_INDEX_URL
 RUN if [ "$USE_CUDA" = "true" ]; then \
@@ -162,6 +167,7 @@ RUN if [ "$USE_CUDA" = "true" ]; then \
         export PYTORCH_INDEX_URL="https://download.pytorch.org/whl/cpu"; \
     fi
 
+RUN df -h
 # install python dependencies
 RUN uv add --no-cache-dir --index https://pypi.org/simple --default-index $PYTORCH_INDEX_URL torch torchvision torchaudio && \
     uv run python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
@@ -176,6 +182,7 @@ RUN uv add --no-cache-dir --index https://pypi.org/simple --default-index $PYTOR
 # copy backend files
 COPY --chown=$UID:$GID ./backend ./backend
 
+RUN df -h
 EXPOSE 8080
 
 HEALTHCHECK CMD curl --silent --fail http://localhost:${PORT:-8080}/health | jq -ne 'input.status == true' || exit 1
@@ -186,4 +193,5 @@ ARG BUILD_HASH
 ENV WEBUI_BUILD_VERSION=${BUILD_HASH}
 ENV DOCKER=true
 
+RUN df -h
 CMD ["uv", "run", "backend/start.sh"]

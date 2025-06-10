@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - main-build-and-display-df
   workflow_dispatch:
 
 jobs:
@@ -48,7 +49,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          push: true
+          push: false
           tags: |
             ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
             ${{ env.IMAGE_NAME }}:latest
