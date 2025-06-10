@@ -22,6 +22,7 @@ ARG GID=0
 
 ######## WebUI frontend ########
 FROM --platform=$BUILDPLATFORM node:22-alpine3.20 AS build
+RUN df -h
 ARG BUILD_HASH
 
 WORKDIR /app
@@ -42,6 +43,8 @@ RUN node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build
 
 ######## WebUI backend ########
 FROM python:3.11-slim-bookworm AS base
+
+RUN df -h
 
 # install uv
 COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
@@ -118,6 +121,7 @@ RUN echo -n 00000000-0000-0000-0000-000000000000 > $HOME/.cache/chroma/telemetry
 # Make sure the user has access to the app and root directory
 RUN chown -R $UID:$GID /app $HOME
 
+RUN df -h
 RUN if [ "$USE_OLLAMA" = "true" ]; then \
     apt-get update && \
     # Install pandoc and netcat
@@ -157,12 +161,14 @@ RUN if [ "$USE_CUDA" = "true" ]; then \
     fi
 
 # install python dependencies
+RUN df -h
 RUN uv sync --no-cache-dir --locked && \
     uv add --no-cache-dir --index https://pypi.org/simple --default-index $PYTORCH_INDEX_URL torch torchvision torchaudio && \
     uv run python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
     uv run python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])" && \
     uv run python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])" && \
     chown -R $UID:$GID /app/backend/data/ || true
+RUN df -h
 
 # copy embedding weight from build
 # RUN mkdir -p /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2
@@ -180,5 +186,7 @@ USER $UID:$GID
 ARG BUILD_HASH
 ENV WEBUI_BUILD_VERSION=${BUILD_HASH}
 ENV DOCKER=true
+
+RUN df -h
 
 CMD ["uv", "run", "backend/start.sh"]
