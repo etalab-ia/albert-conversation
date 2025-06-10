@@ -1,5 +1,5 @@
 """
-title: Albert — France Services
+title: Albert – Nos Administrations
 author: Camille Andre
 version: 0.1
 This pipe should be integrated on the frontend.
@@ -8,7 +8,7 @@ This pipe should be integrated on the frontend.
 from pydantic import BaseModel, Field
 from typing import Literal
 
-from open_webui.custom_functions.pipes.albert_france_services.albert_france_services_settings import (
+from open_webui.custom_functions.pipes.albert_nos_administrations.albert_nos_administrations_settings import (
     collection_dict,
     SYSTEM_PROMPT,
     PROMPT,
@@ -44,6 +44,8 @@ class Pipe:
         self.SYSTEM_PROMPT = SYSTEM_PROMPT
         self.PROMPT = PROMPT
         self.PROMPT_SEARCH_ADDON = PROMPT_SEARCH_ADDON
+
+        self.citation = False
         pass
 
     async def pipe(
