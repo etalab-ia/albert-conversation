@@ -1,5 +1,5 @@
 """
-title: Albert – Nos Administrations
+title: Assistant Administrations
 author: Camille Andre
 version: 0.1
 This pipe should be integrated on the frontend.
@@ -8,7 +8,7 @@ This pipe should be integrated on the frontend.
 from pydantic import BaseModel, Field
 from typing import Literal
 
-from open_webui.custom_functions.pipes.albert_nos_administrations.albert_nos_administrations_settings import (
+from open_webui.custom_functions.pipes.assistant_administrations.assistant_administrations_settings import (
     collection_dict,
     SYSTEM_PROMPT,
     PROMPT,
