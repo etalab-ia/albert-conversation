@@ -148,12 +148,6 @@ COPY --chown=$UID:$GID --from=build /app/build /app/build
 # install python dependencies
 COPY --chown=$UID:$GID CHANGELOG.md hatch_build.py LICENSE package.json pyproject.toml README.md uv.lock ./
 
-# sync uv
-RUN uv sync --no-cache-dir --locked
-
-# activate venv
-RUN . .venv/bin/activate
-
 # # Set PyTorch index URL based on CUDA flag
 ARG PYTORCH_INDEX_URL
 RUN if [ "$USE_CUDA" = "true" ]; then \
@@ -163,7 +157,8 @@ RUN if [ "$USE_CUDA" = "true" ]; then \
     fi
 
 # install python dependencies
-RUN uv add --no-cache-dir --index https://pypi.org/simple --default-index $PYTORCH_INDEX_URL torch torchvision torchaudio && \
+RUN uv sync --no-cache-dir --locked && \
+    uv add --no-cache-dir --index https://pypi.org/simple --default-index $PYTORCH_INDEX_URL torch torchvision torchaudio && \
     uv run python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
     uv run python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])" && \
     uv run python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])" && \
