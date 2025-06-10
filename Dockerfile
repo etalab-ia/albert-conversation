@@ -148,33 +148,24 @@ COPY --chown=$UID:$GID --from=build /app/build /app/build
 # install python dependencies
 COPY --chown=$UID:$GID CHANGELOG.md hatch_build.py LICENSE package.json pyproject.toml README.md uv.lock ./
 
-# sync uv
-RUN uv sync --no-cache-dir --locked
-
-# activate venv
-RUN . .venv/bin/activate
-
-# # Set PyTorch index URL based on CUDA flag
-ARG PYTORCH_INDEX_URL
+# install python dependencies
 RUN if [ "$USE_CUDA" = "true" ]; then \
         export PYTORCH_INDEX_URL="https://download.pytorch.org/whl/$USE_CUDA_DOCKER_VER"; \
     else \
         export PYTORCH_INDEX_URL="https://download.pytorch.org/whl/cpu"; \
-    fi
-
-# install python dependencies
-RUN uv add --no-cache-dir --index https://pypi.org/simple --default-index $PYTORCH_INDEX_URL torch torchvision torchaudio && \
+    fi; \
+    uv add --no-cache-dir --index https://pypi.org/simple --default-index $PYTORCH_INDEX_URL torch torchvision torchaudio && \
     uv run python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
     uv run python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])" && \
     uv run python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])" && \
-    chown -R $UID:$GID /app/backend/data/ || true
+    chown -R $UID:$GID /app/backend/data/
 
 # copy embedding weight from build
 # RUN mkdir -p /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2
 # COPY --from=build /app/onnx /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx
 
 # copy backend files
-COPY --chown=$UID:$GID ./backend ./backend
+COPY --chown=$UID:$GID ./backend .
 
 EXPOSE 8080
 
