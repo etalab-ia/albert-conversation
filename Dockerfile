@@ -6,7 +6,7 @@ ARG USE_OLLAMA=false
 # Tested with cu117 for CUDA 11 and cu121 for CUDA 12 (default)
 ARG USE_CUDA_VER=cu121
 # any sentence transformer model; models to use can be found at https://huggingface.co/models?library=sentence-transformers
-# Leaderboard: https://huggingface.co/spaces/mteb/leaderboard 
+# Leaderboard: https://huggingface.co/spaces/mteb/leaderboard
 # for better performance and multilangauge support use "intfloat/multilingual-e5-large" (~2.5GB) or "intfloat/multilingual-e5-base" (~1.5GB)
 # IMPORTANT: If you change the embedding model (sentence-transformers/all-MiniLM-L6-v2) and vice versa, you aren't able to use RAG Chat with your previous documents loaded in the WebUI! You need to re-embed them.
 ARG USE_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
@@ -28,14 +28,8 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY scripts ./scripts/
-# Create the install-dsfr.sh script directly in the container
-RUN echo '#!/bin/sh\n\n# Copy DSFR files to static\nmkdir -p static/utility\ncp -R \\\n  node_modules/@gouvfr/dsfr/dist/dsfr.min.css \\\n  node_modules/@gouvfr/dsfr/dist/dsfr.module.min.js \\\n  node_modules/@gouvfr/dsfr/dist/dsfr.module.min.js.map \\\n  node_modules/@gouvfr/dsfr/dist/dsfr.nomodule.min.js \\\n  node_modules/@gouvfr/dsfr/dist/dsfr.nomodule.min.js.map \\\n  node_modules/@gouvfr/dsfr/dist/favicon \\\n  node_modules/@gouvfr/dsfr/dist/fonts \\\n  node_modules/@gouvfr/dsfr/dist/icons \\\n  static/\ncp -R \\\n  node_modules/@gouvfr/dsfr/dist/utility/utility.min.css \\\n  static/utility/' > ./scripts/install-dsfr.sh
-RUN chmod +x ./scripts/install-dsfr.sh
-# Create static directory in advance
-RUN mkdir -p static/utility
-RUN rm -f package-lock.json && npm install --ignore-scripts --unsafe-perm && npm cache clean --force
-# Run DSFR install script manually
-RUN sh ./scripts/install-dsfr.sh
+RUN npm ci --unsafe-perm && \
+    npm cache clean --force
 
 COPY . .
 ENV APP_BUILD_HASH=${BUILD_HASH}
@@ -49,6 +43,9 @@ RUN node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build
 ######## WebUI backend ########
 FROM python:3.11-slim-bookworm AS base
 
+# install uv
+COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
+
 # Use args
 ARG USE_CUDA
 ARG USE_OLLAMA
@@ -57,6 +54,9 @@ ARG USE_EMBEDDING_MODEL
 ARG USE_RERANKING_MODEL
 ARG UID
 ARG GID
+
+# Skip frontend build in hatch_build.py
+ENV SKIP_FRONTEND_BUILD=1
 
 ## Basis ##
 ENV ENV=prod \
@@ -101,7 +101,7 @@ ENV HF_HOME="/app/backend/data/cache/embedding/models"
 
 #### Other models ##########################################################
 
-WORKDIR /app/backend
+WORKDIR /app
 
 ENV HOME=/root
 # Create user and group if not root
@@ -142,39 +142,39 @@ RUN if [ "$USE_OLLAMA" = "true" ]; then \
     rm -rf /var/lib/apt/lists/*; \
     fi
 
+    # copy built frontend files
+COPY --chown=$UID:$GID --from=build /app/build /app/build
+
 # install python dependencies
-COPY --chown=$UID:$GID ./backend/requirements.txt ./requirements.txt
+COPY --chown=$UID:$GID CHANGELOG.md hatch_build.py LICENSE package.json pyproject.toml README.md uv.lock ./
 
-RUN pip3 install --no-cache-dir uv && \
-    if [ "$USE_CUDA" = "true" ]; then \
-    # If you use CUDA the whisper and embedding model will be downloaded on first use
-    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/$USE_CUDA_DOCKER_VER --no-cache-dir && \
-    uv pip install --system -r requirements.txt --no-cache-dir && \
-    python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
-    python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])"; \
-    python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])"; \
+# sync uv
+RUN uv sync --no-cache-dir --locked
+
+# activate venv
+RUN . .venv/bin/activate
+
+# # Set PyTorch index URL based on CUDA flag
+ARG PYTORCH_INDEX_URL
+RUN if [ "$USE_CUDA" = "true" ]; then \
+        export PYTORCH_INDEX_URL="https://download.pytorch.org/whl/$USE_CUDA_DOCKER_VER"; \
     else \
-    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --no-cache-dir && \
-    uv pip install --system -r requirements.txt --no-cache-dir && \
-    python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
-    python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])"; \
-    python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])"; \
-    fi; \
-    chown -R $UID:$GID /app/backend/data/
+        export PYTORCH_INDEX_URL="https://download.pytorch.org/whl/cpu"; \
+    fi
 
-
+# install python dependencies
+RUN uv add --no-cache-dir --index https://pypi.org/simple --default-index $PYTORCH_INDEX_URL torch torchvision torchaudio && \
+    uv run python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
+    uv run python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])" && \
+    uv run python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])" && \
+    chown -R $UID:$GID /app/backend/data/ || true
 
 # copy embedding weight from build
 # RUN mkdir -p /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2
 # COPY --from=build /app/onnx /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx
 
-# copy built frontend files
-COPY --chown=$UID:$GID --from=build /app/build /app/build
-COPY --chown=$UID:$GID --from=build /app/CHANGELOG.md /app/CHANGELOG.md
-COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
-
 # copy backend files
-COPY --chown=$UID:$GID ./backend .
+COPY --chown=$UID:$GID ./backend ./backend
 
 EXPOSE 8080
 
@@ -186,4 +186,4 @@ ARG BUILD_HASH
 ENV WEBUI_BUILD_VERSION=${BUILD_HASH}
 ENV DOCKER=true
 
-CMD [ "bash", "start.sh"]
+CMD ["uv", "run", "backend/start.sh"]
