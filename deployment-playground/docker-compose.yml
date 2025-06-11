@@ -58,9 +58,10 @@ services:
 
   albertconversation:
     # Last stable version, see full list here: https://github.com/open-webui/open-webui/releases
-    image: ghcr.io/etalab-ia/albert-conversation/app:issue-alb-150
+    image: ghcr.io/albert-conversation/app:latest
     ports:
       - "8080:8080"
+    user: "1001:1001"
     environment:
       GLOBAL_LOG_LEVEL: DEBUG
       WEBUI_SECRET_KEY: fohjeiSohc2phiGheex1
