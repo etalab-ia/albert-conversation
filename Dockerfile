@@ -22,6 +22,9 @@ ARG GID=0
 
 ######## WebUI frontend ########
 FROM --platform=$BUILDPLATFORM node:22-alpine3.20 AS build
+
+RUN df -h
+
 ARG BUILD_HASH
 
 WORKDIR /app
@@ -45,6 +48,7 @@ ENV VITE_DISABLE_SOURCEMAPS=true
 RUN npm run pyodide:fetch
 
 RUN node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build
+RUN df -h
 
 ######## WebUI backend ########
 FROM python:3.11-slim-bookworm AS base
@@ -118,6 +122,7 @@ RUN echo -n 00000000-0000-0000-0000-000000000000 > $HOME/.cache/chroma/telemetry
 # Make sure the user has access to the app and root directory
 RUN chown -R $UID:$GID /app $HOME
 
+RUN df -h
 RUN if [ "$USE_OLLAMA" = "true" ]; then \
     apt-get update && \
     # Install pandoc and netcat
@@ -142,6 +147,7 @@ RUN if [ "$USE_OLLAMA" = "true" ]; then \
     rm -rf /var/lib/apt/lists/*; \
     fi
 
+RUN df -h
 # install python dependencies
 COPY --chown=$UID:$GID ./backend/requirements.txt ./requirements.txt
 
@@ -163,6 +169,7 @@ RUN pip3 install --no-cache-dir uv && \
     chown -R $UID:$GID /app/backend/data/
 
 
+RUN df -h
 
 # copy embedding weight from build
 # RUN mkdir -p /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2
@@ -174,8 +181,10 @@ COPY --chown=$UID:$GID --from=build /app/CHANGELOG.md /app/CHANGELOG.md
 COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
 
 # copy backend files
+RUN df -h
 COPY --chown=$UID:$GID ./backend .
 
+RUN df -h
 EXPOSE 8080
 
 HEALTHCHECK CMD curl --silent --fail http://localhost:${PORT:-8080}/health | jq -ne 'input.status == true' || exit 1
@@ -186,4 +195,5 @@ ARG BUILD_HASH
 ENV WEBUI_BUILD_VERSION=${BUILD_HASH}
 ENV DOCKER=true
 
+RUN df -h
 CMD [ "bash", "start.sh"]

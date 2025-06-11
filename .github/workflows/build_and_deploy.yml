@@ -3,6 +3,7 @@ name: Build and deploy when pushing on workflow
 on:
   push:
     branches:
+      - alb-160-old-commit-before-migration-to-uv
       - main
   workflow_dispatch:
 
