@@ -784,7 +784,8 @@ export const uploadPipeline = async (token: string, file: File, urlIdx: string) 
 
 	const res = await fetch(`${WEBUI_BASE_URL}/api/v1/pipelines/upload`, {
 		method: 'POST',
-		headers: { ...(token && { authorization: `Bearer ${token}` }) }
+		headers: { ...(token && { authorization: `Bearer ${token}` }) },
+		body: formData
 	});
 
 	if (error) {
