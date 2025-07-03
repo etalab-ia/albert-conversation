@@ -1312,5 +1312,11 @@
 	"What is ProConnect ? - New window": "Qu'est-ce que ProConnect ? - Nouvelle fenêtre",
 	"stats.back_to_assistant": "Retour à l'assistant",
 	"stats.title": "Statistiques d'usage de l'Assistant IA",
-	"stats.subtitle": "Tableau de bord public des indicateurs d'usage de l'Assistant IA"
+	"stats.subtitle": "Tableau de bord public des indicateurs d'usage de l'Assistant IA",
+	"stats.period": "Période",
+	"stats.period.1w": "1 semaine",
+	"stats.period.1m": "1 mois",
+	"stats.period.3m": "3 mois",
+	"stats.period.6m": "6 mois",
+	"stats.period.all": "Tout"
 }

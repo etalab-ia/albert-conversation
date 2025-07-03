@@ -1,9 +1,11 @@
 import logging
 from datetime import datetime
+from typing import Optional
+from enum import Enum
 
 from open_webui.models.users import Users
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from open_webui.internal.db import get_db
@@ -12,6 +14,13 @@ from sqlalchemy import text
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+class TimePeriod(str, Enum):
+    WEEK = "1w"
+    MONTH = "1m"
+    THREE_MONTHS = "3m"
+    SIX_MONTHS = "6m"
+    ALL_TIME = "all"
 
 class GlobalIndicators(BaseModel):
     total_users: int
@@ -31,19 +40,42 @@ class StatsResponse(BaseModel):
     current_stats: CurrentStats
     evolution_stats: EvolutionStats
 
-def get_json_count_query():
+def get_time_threshold(period: TimePeriod) -> Optional[int]:
+    """Calculate the timestamp threshold based on the selected period."""
+    if period == TimePeriod.ALL_TIME:
+        return None
+    
+    current_time = int(datetime.now().timestamp())
+    
+    if period == TimePeriod.WEEK:
+        return current_time - (7 * 24 * 60 * 60)
+    elif period == TimePeriod.MONTH:
+        return current_time - (30 * 24 * 60 * 60)
+    elif period == TimePeriod.THREE_MONTHS:
+        return current_time - (90 * 24 * 60 * 60)
+    elif period == TimePeriod.SIX_MONTHS:
+        return current_time - (180 * 24 * 60 * 60)
+    
+    return None
+
+def get_json_count_query(time_threshold: Optional[int] = None):
     """Return the SQL query to count messages in all chats for PostgreSQL."""
-    return """
+    base_query = """
         SELECT COUNT(*)
         FROM chat, LATERAL json_each(chat.chat->'history'->'messages') AS msg
         WHERE json_extract_path(chat.chat, 'history') IS NOT NULL
         AND json_extract_path(chat.chat, 'history', 'messages') IS NOT NULL
         AND json_typeof(chat.chat->'history'->'messages') = 'object'
     """
+    
+    if time_threshold:
+        base_query += " AND chat.created_at > :threshold"
+    
+    return base_query
 
-def get_model_usage_query():
+def get_model_usage_query(time_threshold: Optional[int] = None):
     """Return the SQL query to count model usage for PostgreSQL."""
-    return """
+    base_query = """
         SELECT 
             msg.value->>'model' as model,
             COUNT(*) as count
@@ -53,9 +85,17 @@ def get_model_usage_query():
         AND json_typeof(chat.chat->'history'->'messages') = 'object'
         AND msg.value->>'role' = 'assistant' 
         AND json_extract_path(msg.value, 'model') IS NOT NULL
+    """
+    
+    if time_threshold:
+        base_query += " AND chat.created_at > :threshold"
+    
+    base_query += """
         GROUP BY msg.value->>'model'
         ORDER BY count DESC
     """
+    
+    return base_query
 
 def get_users_evolution_query():
     """Return the SQL query for users evolution for PostgreSQL."""
@@ -81,20 +121,47 @@ def get_conversations_evolution_query():
         ORDER BY date
     """
 
+def get_total_users_query(time_threshold: Optional[int] = None):
+    """Return the SQL query to count total users for PostgreSQL."""
+    base_query = "SELECT COUNT(*) FROM \"user\""
+    
+    if time_threshold:
+        base_query += " WHERE created_at > :threshold"
+    
+    return base_query
+
+def get_total_conversations_query(time_threshold: Optional[int] = None):
+    """Return the SQL query to count total conversations for PostgreSQL."""
+    base_query = "SELECT COUNT(*) FROM chat"
+    
+    if time_threshold:
+        base_query += " WHERE created_at > :threshold"
+    
+    return base_query
+
 @router.get("/", response_model=StatsResponse)
-async def get_stats():
+async def get_stats(
+    period: TimePeriod = Query(TimePeriod.ALL_TIME, description="Time period for statistics")
+):
     """Get comprehensive statistics for the platform - publicly accessible"""
     
-    # Global indicators
-    total_users = Users.get_num_users()
+    time_threshold = get_time_threshold(period)
     
-    # Get total conversations
+    # Global indicators
     with get_db() as db:
-        total_conversations = db.execute(text("SELECT COUNT(*) FROM chat")).scalar()
+        if time_threshold:
+            total_users = db.execute(text(get_total_users_query(time_threshold)), {"threshold": time_threshold}).scalar()
+            total_conversations = db.execute(text(get_total_conversations_query(time_threshold)), {"threshold": time_threshold}).scalar()
+        else:
+            total_users = Users.get_num_users()
+            total_conversations = db.execute(text("SELECT COUNT(*) FROM chat")).scalar()
         
         # Get total messages by counting all messages in all chats
         try:
-            total_messages_result = db.execute(text(get_json_count_query())).scalar()
+            if time_threshold:
+                total_messages_result = db.execute(text(get_json_count_query(time_threshold)), {"threshold": time_threshold}).scalar()
+            else:
+                total_messages_result = db.execute(text(get_json_count_query())).scalar()
         except Exception as e:
             log.error(f"Error counting messages: {e}")
             total_messages_result = 0
@@ -118,7 +185,10 @@ async def get_stats():
     # Model usage stats - extract from actual chat data
     with get_db() as db:
         try:
-            model_usage_result = db.execute(text(get_model_usage_query())).fetchall()
+            if time_threshold:
+                model_usage_result = db.execute(text(get_model_usage_query(time_threshold)), {"threshold": time_threshold}).fetchall()
+            else:
+                model_usage_result = db.execute(text(get_model_usage_query())).fetchall()
         except Exception as e:
             log.error(f"Error getting model usage: {e}")
             model_usage_result = []
@@ -131,18 +201,18 @@ async def get_stats():
         if model_name:  # Only include non-null model names
             model_usage[model_name] = count
     
-    # Evolution stats - users over time (last 90 days for better data visibility)
-    ninety_days_ago = current_time - (90 * 24 * 60 * 60)
+    # Evolution stats - use the period threshold or default to 90 days for better visibility
+    evolution_threshold = time_threshold or (current_time - (90 * 24 * 60 * 60))
     
     with get_db() as db:
         try:
-            users_evolution = db.execute(text(get_users_evolution_query()), {"threshold": ninety_days_ago}).fetchall()
+            users_evolution = db.execute(text(get_users_evolution_query()), {"threshold": evolution_threshold}).fetchall()
         except Exception as e:
             log.error(f"Error getting users evolution: {e}")
             users_evolution = []
             
         try:
-            conversations_evolution = db.execute(text(get_conversations_evolution_query()), {"threshold": ninety_days_ago}).fetchall()
+            conversations_evolution = db.execute(text(get_conversations_evolution_query()), {"threshold": evolution_threshold}).fetchall()
         except Exception as e:
             log.error(f"Error getting conversations evolution: {e}")
             conversations_evolution = []

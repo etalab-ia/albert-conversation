@@ -1,6 +1,8 @@
 import { WEBUI_API_BASE_URL } from '$lib/constants';
 
-export const getStatsData = async (token?: string) => {
+export type TimePeriod = '1w' | '1m' | '3m' | '6m' | 'all';
+
+export const getStatsData = async (token?: string, period: TimePeriod = 'all') => {
 	let error = null;
 
 	const headers: Record<string, string> = {
@@ -14,7 +16,10 @@ export const getStatsData = async (token?: string) => {
 
 	let res;
 	try {
-		const response = await fetch(`${WEBUI_API_BASE_URL}/stats/`, {
+		const url = new URL(`${WEBUI_API_BASE_URL}/stats/`);
+		url.searchParams.append('period', period);
+
+		const response = await fetch(url.toString(), {
 			method: 'GET',
 			headers,
 			credentials: 'include'

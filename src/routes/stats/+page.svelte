@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, getContext } from 'svelte';
-	import { getStatsData } from '$lib/apis/stats';
+	import { getStatsData, type TimePeriod } from '$lib/apis/stats';
 	import { toast } from 'svelte-sonner';
 	import Chart from 'chart.js/auto';
 	import type { Writable } from 'svelte/store';
@@ -28,6 +28,15 @@
 	let loading = true;
 	let usersChart: Chart | null = null;
 	let conversationsChart: Chart | null = null;
+	let selectedPeriod: TimePeriod = 'all';
+
+	$: periodOptions = [
+		{ value: '1w' as TimePeriod, label: $i18n ? $i18n.t('stats.period.1w') : '1 semaine' },
+		{ value: '1m' as TimePeriod, label: $i18n ? $i18n.t('stats.period.1m') : '1 mois' },
+		{ value: '3m' as TimePeriod, label: $i18n ? $i18n.t('stats.period.3m') : '3 mois' },
+		{ value: '6m' as TimePeriod, label: $i18n ? $i18n.t('stats.period.6m') : '6 mois' },
+		{ value: 'all' as TimePeriod, label: $i18n ? $i18n.t('stats.period.all') : 'Tout' }
+	];
 
 	onMount(async () => {
 		await loadStats();
@@ -36,7 +45,7 @@
 	const loadStats = async () => {
 		try {
 			loading = true;
-			statsData = await getStatsData();
+			statsData = await getStatsData(undefined, selectedPeriod);
 			
 			// Create charts after data is loaded
 			setTimeout(() => {
@@ -48,6 +57,11 @@
 		} finally {
 			loading = false;
 		}
+	};
+
+	const handlePeriodChange = async (period: TimePeriod) => {
+		selectedPeriod = period;
+		await loadStats();
 	};
 
 	const createCharts = () => {
@@ -188,6 +202,26 @@
 					</a>
 				</div>
 			</div>
+			
+			<!-- Period Selector -->
+			<div class="mt-6 flex items-center space-x-2">
+				<span class="text-sm font-medium text-gray-700 dark:text-gray-300">{#if $i18n}{$i18n.t('stats.period')}{:else}Période{/if} :</span>
+				<div class="flex bg-gray-100 gap-4 dark:bg-gray-700 rounded-lg p-1">
+					{#each periodOptions as option}
+						{@const isSelected = selectedPeriod === option.value}
+						<button
+							style={isSelected ? "background-color: #1f2937 !important; color: white !important;" : ""}
+							class="px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 {isSelected 
+								? 'ring-2 ring-gray-600 dark:ring-gray-600' 
+								: 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-gray-900 dark:hover:text-white'}"
+							on:click={() => handlePeriodChange(option.value)}
+							disabled={loading}
+						>
+							{option.label}
+						</button>
+					{/each}
+				</div>
+			</div>
 		</div>
 	</div>
 
@@ -321,7 +355,7 @@
 					<div class="mb-6">
 						<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
 							<h3 class="text-lg font-medium text-gray-900 dark:text-white">
-								Évolution des utilisateurs (90 derniers jours)
+								Évolution des utilisateurs
 							</h3>
 							{#if statsData.evolution_stats.users_over_time.length > 0}
 								{@const totalNewUsers = statsData.evolution_stats.users_over_time.reduce((sum, item) => sum + item.count, 0)}
@@ -341,7 +375,7 @@
 					<div class="mb-6">
 						<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
 							<h3 class="text-lg font-medium text-gray-900 dark:text-white">
-								Évolution des conversations (90 derniers jours)
+								Évolution des conversations
 							</h3>
 							{#if statsData.evolution_stats.conversations_over_time.length > 0}
 								{@const totalNewConversations = statsData.evolution_stats.conversations_over_time.reduce((sum, item) => sum + item.count, 0)}
