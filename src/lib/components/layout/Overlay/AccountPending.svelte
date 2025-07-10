@@ -38,15 +38,22 @@
 					</div>
 				{/if}
 
-				<div class=" mt-6 mx-auto relative group w-fit">
+				<div class=" mt-6 mx-auto flex flex-col gap-4 items-center justify-center relative group w-fit">
 					<button
-						class="relative z-20 flex px-5 py-2 rounded-full bg-white border border-gray-100 dark:border-none hover:bg-gray-100 text-gray-700 transition font-medium text-sm"
+						class="relative z-20 flex px-5 py-2 rounded-full dark:bg-white bg-gray-100 border border-gray-100 dark:border-none hover:bg-gray-100 text-gray-700 transition font-medium text-sm"
 						on:click={async () => {
 							location.href = '/';
 						}}
 					>
 						{$i18n.t('Check Again')}
 					</button>
+
+					<a
+					class="w-full bg-blue-50 p-4 rounded-full dark:bg-blue-900/80 flex items-center relative py-4 sm:py-0 sm:h-[3.5vh] border-b border-blue-100 dark:border-blue-800/30"
+	
+					href="https://tchap.gouv.fr/#/room/!gpLYRJyIwdkcHBGYeC:agent.dinum.tchap.gouv.fr?via=agent.dinum.tchap.gouv.fr&via=agent.finances.tchap.gouv.fr&via=agent.interieur.tchap.gouv.fr"
+						target="_blank">Rejoindre le canal Tchap de l'Assistant IA</a
+					>
 
 					<button
 						class="text-xs text-center w-full mt-2 text-gray-400 underline"
