@@ -9,6 +9,8 @@ import requests
 from typing import List, Optional, Dict
 from open_webui.config import OPENAI_API_KEYS, OPENAI_API_BASE_URL
 from openai import OpenAI
+from bs4 import BeautifulSoup
+
 
 
 ### Parenthesis for confidence
@@ -54,7 +56,7 @@ async def confidence_message(client, model, context, question, answer, __event_e
 ### End parenthesis
 
 # Prompt for docs search same for any rags
-PROMPT_SEARCH_old = """
+PROMPT_SEARCH = """
 Tu es un assistant qui cherche des documents pour répondre à une question.
 {prompt_search_addon}
 Exemples pour t'aider: 
@@ -86,7 +88,7 @@ Réponds uniquement avec la recherche, rien d'autre. Donnes entre 2 et 10 mots c
 Si aucune recherche n'est nécessaire, réponds "no_search".
 """
 
-PROMPT_SEARCH = """
+PROMPT_SEARCH_old = """
 Tu es un assistant qui cherche des documents pour répondre à une question.
 {prompt_search_addon}
 Analyse cette question d'utilisateur et détermine si elle nécessite une recherche dans la base de données.
@@ -144,16 +146,17 @@ async def stream_albert(client, model, max_tokens, messages, __event_emitter__):
                 token = delta.content if delta and hasattr(delta, "content") else ""
 
                 if token:
-                    output += token
-                    await __event_emitter__(
-                        {
-                            "type": "message",
-                            "data": {
-                                "content": token,
-                                "done": False,
-                            },
-                        }
-                    )
+                    for char in token:
+                        output += char
+                        await __event_emitter__(
+                            {
+                                "type": "message",
+                                "data": {
+                                    "content": char,
+                                    "done": False,
+                                },
+                            }
+                        )
 
             except Exception as inner_e:
                 print(f"Erreur dans un chunk : {inner_e}")
@@ -246,6 +249,33 @@ def search_api(
     except ValueError as e:
         print(f"JSON parsing error: {e}")
         raise
+
+def webpage_to_human_readable(page_content):
+        soup = BeautifulSoup(page_content, 'html.parser')
+        # Remove non-content elements
+        for element in soup(['script', 'style', 'meta', 'link', 'noscript', 'header', 'footer', 'aside']):
+            element.decompose()
+        text = soup.get_text(separator='\n')
+        # Clean up whitespace
+        cleaned_text = '\n'.join(line.strip() for line in text.splitlines() if line.strip())
+        return cleaned_text
+
+def search_internet(api_url, api_key, prompt):
+    session = requests.session()
+    session.headers = {"Authorization": f"Bearer {api_key}"}
+
+    data = {"collections": [], "web_search": True, "k": 10, "prompt": prompt}
+    response = session.post(url=f"{api_url}/search", json=data)
+
+    print("CHUNKS INTERNET")
+    print([print(result['chunk']['content']) for result in response.json()["data"]])
+
+    chunks = [f"Context {n} : {webpage_to_human_readable(result['chunk']['content'])}" for n, result in enumerate(response.json()["data"])]
+    sources = list(set([result["chunk"]["metadata"]["document_name"] for result in response.json()["data"]]))
+
+    context = "\n\n".join(chunks) + "\n\nSources : " + ", ".join(sources)
+
+    return context
 
 def reranker(
     query: str,
@@ -387,6 +417,7 @@ async def pipe(self, body: dict, __event_emitter__=None, collection_dict: dict =
                 max_tokens=50,
                 messages=[{"role": "user", "content": PROMPT_SEARCH.format(prompt_search_addon=PROMPT_SEARCH_ADDON, history=messages[1:], question=prompt)}],
             )
+            print("COLLECTION DICT",collection_dict)
             print("SEARCH MESSAGES")
             [print(message) for message in messages[1:]]
             search = search.choices[0].message.content
@@ -407,38 +438,44 @@ async def pipe(self, body: dict, __event_emitter__=None, collection_dict: dict =
         )
 
                 print("SEARCH")
-                search_results = search_api(
-                    collection_ids=list(collection_dict.values()),
-                    user_query=search,
-                    api_url=ALBERT_API_URL,
-                    api_key=ALBERT_API_KEY,
-                    top_k=20,
+                if list(collection_dict.keys()) == ["internet"]:
+                    print("SEARCH INTERNET")
+                    context = search_internet(ALBERT_API_URL, ALBERT_API_KEY, search)
+                    print("CONTEXT INTERNET: \n",context)
+                else:
+                    print("SEARCH ALBERT")
+                    search_results = search_api(
+                        collection_ids=list(collection_dict.values()),
+                        user_query=search,
+                        api_url=ALBERT_API_URL,
+                        api_key=ALBERT_API_KEY,
+                        top_k=20,
                     rff_k=20,  # Unuseful for semantic search
                     method="semantic",
                     score_threshold=self.valves.SEARCH_SCORE_THRESHOLD,
                     web_search=False,
-                )
-                print("SEARCH_RESULTS",len(search_results))
-                print("RERANK")
-                top_chunks = reranker(
-                    query=user_query,
-                    chunks=search_results,
-                    api_url=ALBERT_API_URL,
-                    api_key=ALBERT_API_KEY,
-                    score_threshold=self.valves.RERANKER_SCORE_THRESHOLD,
-                    rerank_model=rerank_model,
-                    min_chunks=number_of_chunks,
-                )[:number_of_chunks]
+                    )
+                    print("SEARCH_RESULTS",len(search_results))
+                    print("RERANK")
+                    top_chunks = reranker(
+                        query=user_query,
+                        chunks=search_results,
+                        api_url=ALBERT_API_URL,
+                        api_key=ALBERT_API_KEY,
+                        score_threshold=self.valves.RERANKER_SCORE_THRESHOLD,
+                        rerank_model=rerank_model,
+                        min_chunks=number_of_chunks,
+                    )[:number_of_chunks]
 
-                references = ""
-                for k, chunk in enumerate(top_chunks):
-                    references += f"""
-- Document {k+1}:
-{format_chunks_to_text(chunk = chunk.get("chunk").get("metadata"))}
-"""
-                print("RERANK_RESULTS",len(top_chunks))
-                print("CONTEXT:\n",references)
-                context = references
+                    references = ""
+                    for k, chunk in enumerate(top_chunks):
+                        references += f"""
+    - Document {k+1}:
+    {format_chunks_to_text(chunk = chunk.get("chunk").get("metadata"))}
+    """
+                    print("RERANK_RESULTS",len(top_chunks))
+                    print("CONTEXT:\n",references)
+                    context = references
 
         except Exception as e:
             print("ERROR : ", e)
@@ -479,4 +516,8 @@ async def pipe(self, body: dict, __event_emitter__=None, collection_dict: dict =
         #answer = "Le directeur de l'ONF est Julien COUREAU." # For testing to induce a wrong answer
         await confidence_message(client, model, context, prompt, answer, __event_emitter__)
 
+        body["messages"].append({
+            "role": "assistant",
+            "content": answer,
+        })
         return body

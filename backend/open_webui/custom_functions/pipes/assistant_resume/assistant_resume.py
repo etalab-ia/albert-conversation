@@ -15,6 +15,7 @@ from open_webui.storage.redis_client import redis_client
 import ast
 from open_webui.config import OPENAI_API_BASE_URL, OPENAI_API_KEYS
 import logging
+from openai import OpenAI
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -147,29 +148,110 @@ def upload_file_to_albert_api(session, file_name, file_content, ALBERT_URL):
     ), "Le fichier ne doit pas dépasser 10MB"
 
     # Création d'un flux de données en mémoire
-    file_like_object = io.BytesIO(file_content_json)
+    #file_like_object = io.BytesIO(file_content_json)
 
     # Préparation des données pour la requête
     files = {
         "file": (
-            "cam.json",  # Nom du fichier
-            file_like_object,  # Flux de données
-            "application/json",  # Type MIME
+            'tmp.txt',  # Nom du fichier
+            file_content.encode('utf-8'),  # Flux de données
+            "text/plain",  # Type MIME
         )
     }
 
+    #file_content = file_content.encode('utf-8')
+            
+    #files = {
+    #    'file': (file_name, file_content, 'text/plain')
+    #}
+    
     data = {
-        "request": '{"collection": "%s", "chunker": {"name": "LangchainRecursiveCharacterTextSplitter","args": {"chunk_size": 3000,"chunk_overlap": 100,"length_function": "len","is_separator_regex": false,"separators": ["\\n\\n","\\n",". "," "],"chunk_min_size": 0}}}'
-        % collection_id
+        'collection': str(collection_id),  # Use the same extracted ID
+        'chunk_size': '3000',
+        'chunk_overlap': '100',
+        'chunker': 'RecursiveCharacterTextSplitter',
+        'length_function': 'len',
+        'chunk_min_size': '0',
+        'is_separator_regex': 'false',
+        'metadata': ''
     }
+    
+    response = requests.post(
+        f"{OPENAI_API_BASE_URL}/documents",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEYS}"},
+        files=files,
+        data=data
+    )
 
-    # Envoi de la requête
-    response = session.post(f"{OPENAI_API_BASE_URL}/files", data=data, files=files)
+
     document_id = response.json()["id"]
     assert response.status_code == 201, "Erreur lors de l'importation du fichier"
 
     return str(collection_id), str(document_id)
 
+
+async def stream_albert(client, model, max_tokens, messages, __event_emitter__):
+    await __event_emitter__(
+        {
+            "type": "message",
+            "data": {"content": "Messages:\n" + str(messages), "done": False},
+        }
+    )
+    try:
+        chat_response = client.chat.completions.create(
+            model=model,
+            stream=True,
+            temperature=0.2,
+            max_tokens=max_tokens,
+            messages=messages,
+        )
+
+        output = ""
+        for chunk in chat_response:
+            try:
+                choices = chunk.choices
+                if not choices or not hasattr(choices[0], "delta"):
+                    continue
+
+                delta = choices[0].delta
+                token = delta.content if delta and hasattr(delta, "content") else ""
+
+                if token:
+                    for char in token:
+                        output += char
+                        await __event_emitter__(
+                            {
+                                "type": "message",
+                                "data": {
+                                    "content": char,
+                                    "done": False,
+                                },
+                            }
+                        )
+
+            except Exception as inner_e:
+                print(f"Erreur dans un chunk : {inner_e}")
+                continue
+
+        await __event_emitter__(
+            {
+                "type": "message",
+                "data": {"content": "", "done": True},
+            }
+        )
+        print("OUTPUT: ",output)
+        return output
+
+    except Exception as e:
+        await __event_emitter__(
+            {
+                "type": "chat:message:delta",
+                "data": {
+                    "content": f"Erreur globale API : {str(e)}",
+                    "done": True,
+                },
+            }
+        )
 
 class Pipe:
 
@@ -193,13 +275,18 @@ class Pipe:
         __metadata__=None,
         __files__=None,
     ):
+
+        client = OpenAI(
+            api_key=OPENAI_API_KEYS,
+            base_url=OPENAI_API_BASE_URL,
+        )
+
         def update_state(synth_id, state_dict):
             redis_client.set(
                 synth_id,
                 str(state_dict),
             )
 
-        time.sleep(0.2)
         synth_id = (
             str(__metadata__["user_id"]) + str(__metadata__["chat_id"]) + "_synthetizer"
         )
@@ -214,7 +301,7 @@ class Pipe:
 
         state_dict = redis_client.get(synth_id)
 
-        if state_dict == None:
+        if state_dict is None:
             state_dict = {
                 "step": 0,
                 "sommaire": None,
@@ -233,28 +320,6 @@ class Pipe:
         else:
             state_dict = ast.literal_eval(state_dict)
 
-        # This will be used for the agent
-        def custom_model_albert(messages, stop_sequences=[], max_tokens=256):
-
-            data = {
-                "model": self.valves.SUPERVISOR_MODEL,
-                "messages": messages,
-                "stream": False,
-                "n": 1,
-                "temperature": 0.2,
-                "repetition_penalty": 1,
-                "max_tokens": max_tokens,
-                "stop": stop_sequences,
-            }
-            response = session.post(
-                url=f"{OPENAI_API_BASE_URL}/chat/completions",
-                json=data,
-                timeout=100000,
-            )
-            # log.info(response.text)
-            answer = response.json()["choices"][0]["message"]
-            return SimpleNamespace(**answer)  # needed to have a 'json'
-
         # ------ SOUS-FONCTIONS ---------
         async def upload_doc_if_needed(session):
             if not __files__:
@@ -264,7 +329,7 @@ class Pipe:
                         "type": "message",
                         "data": {
                             "content": """
-### 👋 Bienvenue sur **Albert Résumé** !
+### 👋 Bienvenue sur **Assistant Résumé** !
 ---
 > *Ce pipeline est expérimental et fonctionne différemment d’un modèle classique.
 > Suivez simplement les quelques étapes qui vous seront indiquées pour générer la synthèse de votre document.*
@@ -358,11 +423,19 @@ class Pipe:
             state_dict["step"] = 31
             state_dict["sommaire"] = sommaire
 
+            #await __event_emitter__(
+            #    {
+            #        "type": "message",
+            #        "data": {
+            #            "content": f"Voici le plan de résumé proposé :\n\n{sommaire}\n\n***Pour valider, répondez 'ok'. Sinon, indiquez des instructions supplémentaires.***",
+            #        },
+            #    }
+            #)
             await __event_emitter__(
                 {
                     "type": "message",
                     "data": {
-                        "content": f"Voici le plan de résumé proposé :\n\n{sommaire}\n\n***Pour valider, répondez 'ok'. Sinon, indiquez des instructions supplémentaires.***",
+                        "content": "\n\n***Pour valider, répondez 'ok'. Sinon, indiquez des instructions supplémentaires.***",
                     },
                 }
             )
@@ -389,7 +462,16 @@ class Pipe:
                     ),
                 },
             ]
-            return custom_model_albert(messages, max_tokens=400).content
+
+            await __event_emitter__(
+                {
+                    "type": "message",
+                    "data": {
+                        "content": "Voici le plan de résumé proposé :\n\n",
+                    },
+                }
+            )
+            return await stream_albert(client, self.valves.SUPERVISOR_MODEL, 2048, messages, __event_emitter__)
 
         async def genere_resume_et_valide(synth_id, state_dict, session):
             """
@@ -410,9 +492,14 @@ class Pipe:
                     {"role": "system", "content": SUM_PROMPT_SYSTEM},
                     {"role": "user", "content": prompt},
                 ]
-                output = custom_model_albert(
-                    messages=messages_sum, max_tokens=400
-                ).content
+
+                output = client.chat.completions.create(
+                model=self.valves.SUPERVISOR_MODEL,
+                stream=False,
+                temperature=0.1,
+                max_tokens=400,
+                messages=messages_sum,
+                ).choices[0].message.content
                 return output
             
             # Process chunks in batches of 5
@@ -452,9 +539,8 @@ class Pipe:
                 {"role": "system", "content": SUM_PROMPT_SYSTEM},
                 {"role": "user", "content": merge_prompt},
             ]
-            resume = custom_model_albert(
-                messages=messages_merge, max_tokens=1024
-            ).content
+
+            resume =await stream_albert(client, self.valves.SUPERVISOR_MODEL, 2048, messages_merge, __event_emitter__)
 
             await __event_emitter__(
                 {
@@ -473,7 +559,7 @@ class Pipe:
                 {
                     "type": "message",
                     "data": {
-                        "content": f"{resume}\n\n***Pour valider, répondez 'ok'. Sinon, indiquez des instructions supplémentaires.***",
+                        "content": "\n\n***Pour valider, répondez 'ok'. Sinon, indiquez des instructions supplémentaires.***",#
                         "done": False,
                         "hidden": False,
                     },
@@ -516,9 +602,7 @@ class Pipe:
                 {"role": "user", "content": update_resume_prompt},
             ]
             log.info(f"MODIF NEEDED:\n {update_resume_prompt}")
-            resume_corrige = custom_model_albert(
-                messages=messages_merge, max_tokens=1024
-            ).content
+            resume_corrige =await stream_albert(client, self.valves.SUPERVISOR_MODEL, 2048, messages_merge, __event_emitter__)
 
             state_dict["resume"] = resume_corrige
             update_state(synth_id, state_dict)
@@ -536,7 +620,7 @@ class Pipe:
                 {
                     "type": "message",
                     "data": {
-                        "content": f"{resume_corrige}\n\n***Pour valider, répondez 'ok'. Sinon, indiquez des instructions supplémentaires.***",
+                        "content": "\n\n***Pour valider, répondez 'ok'. Sinon, indiquez des instructions supplémentaires.***",#resume_corrige
                         "done": False,
                         "hidden": False,
                     },
