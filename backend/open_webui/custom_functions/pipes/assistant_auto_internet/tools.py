@@ -204,7 +204,6 @@ class AsyncHelper:
         text = soup.get_text(separator='\n')
         # Clean up whitespace
         cleaned_text = '\n'.join(line.strip() for line in text.splitlines() if line.strip())
-        print("CLEANED TEXT : ", cleaned_text)
         return cleaned_text
 
     @staticmethod
