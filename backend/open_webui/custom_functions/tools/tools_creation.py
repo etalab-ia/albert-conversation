@@ -14,7 +14,7 @@ def create_tools(model_func, collections, description, user, request, event_emit
             user_query: une question claire et précise avec le contexte de l'utilisateur (str)
         """
         print("Searching internet...")
-        result = run_research(user_query, internet=True, iteration_limit=5, prompt_suffix='', max_tokens=2048, num_queries=5, k=5, lang='fr', event_emitter=event_emitter)[0]
+        result = run_research(user_query, internet=True, iteration_limit=5, prompt_suffix='', max_tokens=2048, num_queries=5, k=5, lang='fr', event_emitter=event_emitter)[0] #233
         print("Internet search completed. \nResults: \n", result)
         return result
 

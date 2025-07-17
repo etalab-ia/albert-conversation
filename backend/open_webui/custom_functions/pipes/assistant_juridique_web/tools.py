@@ -237,7 +237,7 @@ class AsyncHelper:
         prompt = Prompts.evaluator(lang)
         messages = [
             {"role": "system", "content": "You are a strict and precise evaluator of research relevance." if lang == 'en' else "Vous êtes un évaluateur strict et précis de la pertinence des recherches."},
-            {"role": "user", "content": f"Requête utilisateur: {user_query}\n\nExtrait de page web (premiers 5000 caractères) :\n{page_text[:5000]}[...] \n\n{prompt}"}
+            {"role": "user", "content": f"Requête utilisateur: {user_query}\n\nExtrait de page web (premiers 2000 caractères) :\n{page_text[:2000]}[...] \n\n{prompt}"}
         ]
         response = await AsyncHelper.call_openrouter_async(client, token_counter, messages, max_tokens=10)
         print(f"EVALUATOR RESPONSE: {response}")
