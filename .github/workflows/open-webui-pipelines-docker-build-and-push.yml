@@ -4,7 +4,7 @@ name: Build and push Open WebUI Pipelines custom Docker image
 on:
   push:
     branches:
-      - issue-alb-195
+      - main
   workflow_dispatch:
 
 jobs:
