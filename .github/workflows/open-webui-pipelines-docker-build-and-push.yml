@@ -1,0 +1,39 @@
+name: Build and push Open WebUI Pipelines custom Docker image
+# More information, see ../../pipelines/
+
+on:
+  push:
+    branches:
+      - issue-alb-195
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    name: Build and push from ${{ github.ref_name }}/${{ github.sha }}
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository }}/open-webui-pipelines
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push app
+        uses: docker/build-push-action@v6
+        with:
+          context: ./pipelines/
+          file: ./pipelines//Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_NAME }}:latest

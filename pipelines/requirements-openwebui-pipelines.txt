@@ -1,0 +1,4 @@
+requests==2.32.4
+openai==1.87.0
+Jinja2==3.1.6
+beautifulsoup4==4.12.3
