@@ -467,6 +467,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
 def is_valid_siret(siret):
     VALID_SIRETS = [
         "13002526500013", # DINUM
+        "13002603200016"  # ANCT
     ]
     return siret in VALID_SIRETS
 
