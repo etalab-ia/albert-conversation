@@ -1,0 +1,12 @@
+transformers
+sentence-transformers==3.3.1
+accelerate
+colbert-ai==0.2.21
+einops==0.8.1
+
+pymilvus==2.5.0
+
+playwright==1.49.1 # Caution: version must match docker-compose.playwright.yaml
+
+# Sougou API SDK(Tencentcloud SDK)
+tencentcloud-sdk-python==3.0.1336

@@ -1,0 +1,49 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - 6379
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg17
+    restart: unless-stopped
+    ports:
+      - 5432
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pg_isready -U $$POSTGRES_USER -h $$(hostname -i)"]
+      interval: 10s
+      start_period: 30s
+
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:git-adec657
+    restart: unless-stopped
+    ports:
+      - 9099
+    environment:
+      PIPELINES_API_KEY: li3bie6I
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9099/v1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  redis:
+     name: ${COMPOSE_PROJECT_NAME}_redis
+  postgres:
+     name: ${COMPOSE_PROJECT_NAME}_postgres
