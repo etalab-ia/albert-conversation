@@ -16,6 +16,7 @@ from open_webui.utils.redis import (
 from open_webui.env import (
     ENABLE_WEBSOCKET_SUPPORT,
     WEBSOCKET_MANAGER,
+    WEBSOCKET_ASYNCSERVER_ALWAYS_CONNECT,
     WEBSOCKET_REDIS_URL,
     WEBSOCKET_REDIS_LOCK_TIMEOUT,
     WEBSOCKET_SENTINEL_PORT,
@@ -44,12 +45,13 @@ if WEBSOCKET_MANAGER == "redis":
         )
     else:
         mgr = socketio.AsyncRedisManager(WEBSOCKET_REDIS_URL)
+
     sio = socketio.AsyncServer(
         cors_allowed_origins=[],
         async_mode="asgi",
         transports=(["websocket"] if ENABLE_WEBSOCKET_SUPPORT else ["polling"]),
         allow_upgrades=ENABLE_WEBSOCKET_SUPPORT,
-        always_connect=True,
+        always_connect=WEBSOCKET_ASYNCSERVER_ALWAYS_CONNECT,
         client_manager=mgr,
     )
 else:
@@ -58,7 +60,7 @@ else:
         async_mode="asgi",
         transports=(["websocket"] if ENABLE_WEBSOCKET_SUPPORT else ["polling"]),
         allow_upgrades=ENABLE_WEBSOCKET_SUPPORT,
-        always_connect=True,
+        always_connect=WEBSOCKET_ASYNCSERVER_ALWAYS_CONNECT,
     )
 
 
