@@ -1,0 +1,9 @@
+[tools]
+# Same NodeJS and Python version as the one used in ./Dockerfile
+node="22.15.0"
+python="3.11.11"
+jq="1.7.1"
+
+[env]
+_.source = { value = "./.envrc", tools = true }
+_.python.venv = { path = ".venv", create = true, uv_create_args = ['--seed'] }

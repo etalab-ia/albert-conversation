@@ -317,3 +317,6 @@ static/pyodide/pyodide-lock.json
 .turbo
 
 src/routes/version/
+
+# sklein:
+.secret
