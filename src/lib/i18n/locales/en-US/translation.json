@@ -1059,6 +1059,7 @@
 	"Tail free sampling is used to reduce the impact of less probable tokens from the output. A higher value (e.g., 2.0) will reduce the impact more, while a value of 1.0 disables this setting.": "",
 	"Talk to model": "",
 	"Tap to interrupt": "",
+	"Tchap": "",
 	"Tasks": "",
 	"Tavily API Key": "",
 	"Tavily Extract Depth": "",

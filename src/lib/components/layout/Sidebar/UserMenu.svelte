@@ -5,6 +5,7 @@
 	import { flyAndScale } from '$lib/utils/transitions';
 	import { goto } from '$app/navigation';
 	import ArchiveBox from '$lib/components/icons/ArchiveBox.svelte';
+	import Tchap from '$lib/components/icons/Tchap.svelte';
 	import { showSettings, activeUserIds, USAGE_POOL, mobile, showSidebar, user } from '$lib/stores';
 	import { fade, slide } from 'svelte/transition';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -100,6 +101,26 @@
 					</div>
 					<div class=" self-center truncate">{t('Archived Chats')}</div>
 				</button>
+
+				<a
+					class="flex rounded-md py-2 px-3 w-full hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+					href="https://tchap.gouv.fr/#/room/!gpLYRJyIwdkcHBGYeC:agent.dinum.tchap.gouv.fr?via=agent.dinum.tchap.gouv.fr&via=agent.finances.tchap.gouv.fr&via=agent.tchap.gouv.fr"
+					target="_blank"
+					rel="noopener external"
+					title="Tchap - Assistant IA"
+					on:click={() => {
+						show = false;
+
+						if ($mobile) {
+							showSidebar.set(false);
+						}
+					}}
+				>
+					<div class="flex items-center justify-center w-5 h-5 mr-3 flex-shrink-0">
+						<Tchap />
+					</div>
+					<div class="self-center truncate flex-1">{t('Tchap')}</div>
+				</a>
 
 				{#if role === 'admin'}
 					<a
