@@ -88,7 +88,7 @@
 					💬 {$i18n.t('We would love to hear what you think about Assistant IA')}
 				</span>
 				<a
-					href="https://grist.numerique.gouv.fr/o/albert/forms/3YqFNWKSkYjLTK9quzcSLq/75"
+					href="https://tchap.gouv.fr/#/room/!gpLYRJyIwdkcHBGYeC:agent.dinum.tchap.gouv.fr?via=agent.dinum.tchap.gouv.fr&via=agent.finances.tchap.gouv.fr&via=agent.tchap.gouv.fr"
 					class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline underline-offset-2"
 					target="_blank"
 					rel="noopener noreferrer"
