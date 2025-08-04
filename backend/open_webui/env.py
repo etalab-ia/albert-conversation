@@ -374,6 +374,17 @@ REDIS_PORT = os.environ.get("REDIS_PORT", "changeme")
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "changeme")
 
 ####################################
+# SMTP Configuration
+####################################
+
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "changeme")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "changeme"))
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "changeme")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "changeme")
+SMTP_FROM_EMAIL = os.environ.get("SMTP_FROM_EMAIL", "changeme")
+EMAIL_NOTIFICATIONS_ENABLED = os.environ.get("EMAIL_NOTIFICATIONS_ENABLED", "True").lower() == "true"
+
+####################################
 # WEBUI_SECRET_KEY
 ####################################
 

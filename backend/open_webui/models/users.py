@@ -10,7 +10,8 @@ from open_webui.models.groups import Groups
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import BigInteger, Column, String, Text
-
+import logging
+log = logging.getLogger(__name__)   
 ####################
 # User DB Schema
 ####################
@@ -217,12 +218,57 @@ class UsersTable:
     def update_user_role_by_id(self, id: str, role: str) -> Optional[UserModel]:
         try:
             with get_db() as db:
+                # Get the current user to check if role is changing from pending to user
+                current_user = db.query(User).filter_by(id=id).first()
+                if not current_user:
+                    return None
+                
+                old_role = current_user.role
+                
+                # Update the role
                 db.query(User).filter_by(id=id).update({"role": role})
                 db.commit()
+                
+                # Get the updated user
                 user = db.query(User).filter_by(id=id).first()
-                return UserModel.model_validate(user)
-        except Exception:
+                updated_user = UserModel.model_validate(user)
+                
+                # Send email notification if role changed from pending to user
+                print(f"old_role: {old_role}, role: {role}")
+                if old_role == "pending" and role == "user":
+                    self._send_account_validation_email(updated_user)
+                    log.info(f"Sent account validation email to {updated_user.email}")
+                    
+                return updated_user
+        except Exception as e:
+         
+            log.error(f"Error updating user role: {str(e)}")
             return None
+    
+    def _send_account_validation_email(self, user: UserModel):
+        """
+        Send account validation email asynchronously
+        """
+        try:
+            from open_webui.utils.email import email_service
+            import threading
+            
+            def send_email():
+                try:
+                    email_service.send_account_validation_email(user.email, user.name)
+                except Exception as e:
+                    print(f"Failed to send account validation email for user {user.email}: {str(e)}")
+                    log.error(f"Failed to send account validation email for user {user.email}: {str(e)}")
+            
+            # Send email in background thread to avoid blocking the response
+            thread = threading.Thread(target=send_email)
+            thread.daemon = True
+            thread.start()
+            
+        except Exception as e:
+            import logging
+            log = logging.getLogger(__name__)
+            log.error(f"Failed to send account validation email for user {user.email}: {str(e)}")
 
     def update_user_profile_image_url_by_id(
         self, id: str, profile_image_url: str
