@@ -76,6 +76,15 @@ export const showOverview = writable(false);
 export const showArtifacts = writable(false);
 export const showCallOverlay = writable(false);
 
+// Store pour les artefacts dynamiques émis via event emitter
+export const dynamicArtifacts = writable<Array<{
+	id: string;
+	type: 'iframe' | 'svg' | 'text' | 'image' | 'file';
+	content: string;
+	title?: string;
+	timestamp: number;
+}>>([]);
+
 export const temporaryChatEnabled = writable(false);
 export const scrollPaginationEnabled = writable(false);
 export const currentChatPage = writable(1);
