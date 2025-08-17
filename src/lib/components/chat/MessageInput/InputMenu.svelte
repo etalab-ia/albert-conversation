@@ -102,33 +102,29 @@
 			transition={flyAndScale}
 		>
 			{#if Object.keys(tools).length > 0}
-				<div class="  max-h-28 overflow-y-auto scrollbar-hidden">
+				<div class="flex justify-between  max-h-28 overflow-y-auto scrollbar-hidden">
 					{#each Object.keys(tools) as toolId}
-						<button
-							class="flex w-full justify-between gap-2 items-center px-3 py-2 text-sm font-medium cursor-pointer rounded-xl"
-							on:click={() => {
-								tools[toolId].enabled = !tools[toolId].enabled;
-							}}
-						>
-							<div class="flex-1 truncate">
+						<div class="flex w-full items-center gap-4 px-3 py-2 text-sm font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800">
+							<div class="flex-1 truncate min-w-0">
 								<Tooltip
 									content={tools[toolId]?.description ?? ''}
 									placement="top-start"
-									className="flex flex-1 gap-2 items-center"
+									className="flex flex-1 gap-3 items-center"
 								>
 									<div class="shrink-0">
 										<WrenchSolid />
 									</div>
 
-									<div class=" truncate">{tools[toolId].name}</div>
+									<div class="truncate">{tools[toolId].name}</div>
 								</Tooltip>
 							</div>
 
-							<div class=" shrink-0">
+							<div class=" ml-auto">
 								<Switch
 									state={tools[toolId].enabled}
 									on:change={async (e) => {
 										const state = e.detail;
+										tools[toolId].enabled = state;
 										await tick();
 										if (state) {
 											selectedToolIds = [...selectedToolIds, toolId];
@@ -138,7 +134,7 @@
 									}}
 								/>
 							</div>
-						</button>
+						</div>
 					{/each}
 				</div>
 
