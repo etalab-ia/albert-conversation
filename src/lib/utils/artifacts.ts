@@ -1,9 +1,12 @@
 import { dynamicArtifacts, showArtifacts, showControls } from '$lib/stores';
+import { dynamicArtifactsHidden, forceSelectDynamicArtifacts } from '$lib/stores';
 
 export interface ArtifactData {
 	type: 'iframe' | 'svg' | 'text' | 'image' | 'file';
 	content: string;
 	title?: string;
+	chatId?: string;
+	messageId?: string;
 }
 
 /**
@@ -71,6 +74,10 @@ export function emitArtifact(artifactData: ArtifactData) {
 		return newArtifacts;
 	});
 
+	// Rendre visibles les artefacts dynamiques et forcer la sélection dynamique
+	dynamicArtifactsHidden.set(false);
+	forceSelectDynamicArtifacts.set(true);
+
 	// Afficher automatiquement les artefacts
 	console.log('Setting showArtifacts to true');
 	showArtifacts.set(true);
@@ -105,8 +112,6 @@ export function removeArtifact(artifactId: string) {
  */
 export function clearDynamicArtifacts() {
 	dynamicArtifacts.set([]);
-	showArtifacts.set(false);
-	showControls.set(false);
 }
 
 /**

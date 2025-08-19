@@ -269,7 +269,7 @@
 			// Import and use emitArtifact function
 			import('$lib/utils/artifacts').then(({ emitArtifact }) => {
 				console.log('emitArtifact function imported successfully');
-				const artifactId = emitArtifact(data);
+				const artifactId = emitArtifact({ ...data, chatId: event.chat_id, messageId: event.message_id });
 				console.log('Artifact emitted with ID:', artifactId);
 				console.log('=== END ARTIFACTS EVENT ===');
 			}).catch(error => {
