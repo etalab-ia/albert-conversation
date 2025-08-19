@@ -108,16 +108,22 @@
 		// Start observing the container's size changes
 		resizeObserver.observe(container);
 
-		document.addEventListener('mousedown', onMouseDown);
-		document.addEventListener('mouseup', onMouseUp);
+		// Use window for broader event coverage (especially when interacting with iframes)
+		window.addEventListener('mousedown', onMouseDown);
+		window.addEventListener('mouseup', onMouseUp);
+		// Ensure drag state resets even if mouse leaves window during drag
+		window.addEventListener('mouseleave', onMouseUp);
+		window.addEventListener('blur', onMouseUp);
 	});
 
 	onDestroy(() => {
 		showControls.set(false);
 
 		mediaQuery.removeEventListener('change', handleMediaQuery);
-		document.removeEventListener('mousedown', onMouseDown);
-		document.removeEventListener('mouseup', onMouseUp);
+		window.removeEventListener('mousedown', onMouseDown);
+		window.removeEventListener('mouseup', onMouseUp);
+		window.removeEventListener('mouseleave', onMouseUp);
+		window.removeEventListener('blur', onMouseUp);
 	});
 
 	const closeHandler = () => {

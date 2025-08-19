@@ -4,7 +4,7 @@
 	const i18n = getContext('i18n');
 	const dispatch = createEventDispatcher();
 
-	import { chatId, settings, showArtifacts, showControls, dynamicArtifacts } from '$lib/stores';
+	import { chatId, settings, showArtifacts, showControls, dynamicArtifacts, forceSelectDynamicArtifacts, dynamicArtifactsHidden } from '$lib/stores';
 	import XMark from '../icons/XMark.svelte';
 	import { copyToClipboard, createMessagesList } from '$lib/utils';
 	import ArrowsPointingOut from '../icons/ArrowsPointingOut.svelte';
@@ -23,6 +23,23 @@
 	let copied = false;
 	let iframeElement: HTMLIFrameElement;
 
+	const getTypeLabel = (type: string) => {
+		switch (type) {
+			case 'iframe':
+				return $i18n.t('Notebook');
+			case 'svg':
+				return $i18n.t('SVG');
+			case 'text':
+				return $i18n.t('Text');
+			case 'image':
+				return $i18n.t('Image');
+			case 'file':
+				return $i18n.t('File');
+			default:
+				return type;
+		}
+	};
+
 	$: if (history) {
 		messages = createMessagesList(history, history.currentId);
 		getContents();
@@ -39,8 +56,8 @@
 		getContents();
 	}
 
-	// Réactivité pour l'historique des messages
-	$: if (history && $dynamicArtifacts.length === 0) {
+	// Réactivité pour l'historique des messages (toujours, même si des artefacts dynamiques existent)
+	$: if (history) {
 		messages = createMessagesList(history, history.currentId);
 		getContents();
 	}
@@ -52,109 +69,131 @@
 		
 		contents = [];
 		
-		// 1. Extraire les artefacts des messages (seulement si pas d'artifacts dynamiques prioritaires)
-		if ($dynamicArtifacts.length === 0) {
-			messages.forEach((message) => {
-				if (message?.role !== 'user' && message?.content) {
-					const codeBlockContents = message.content.match(/```[\s\S]*?```/g);
-					let codeBlocks = [];
+		// 1. Extraire toujours les artefacts des messages et préparer un tableau avec horodatage pour tri stable
+		let lastNormalIndex: number = -1;
+		let staged: Array<{ type: string; content: string; id?: string; title?: string; isDynamic?: boolean; createdAt: number; order: number }> = [];
+		let orderCounter = 0;
+		messages.forEach((message) => {
+			if (message?.role !== 'user' && message?.content) {
+				const codeBlockContents = message.content.match(/```[\s\S]*?```/g);
+				let codeBlocks = [];
 
-					if (codeBlockContents) {
-						codeBlockContents.forEach((block) => {
-							const lang = block.split('\n')[0].replace('```', '').trim().toLowerCase();
-							const code = block.replace(/```[\s\S]*?\n/, '').replace(/```$/, '');
-							codeBlocks.push({ lang, code });
-						});
-					}
-
-					let htmlContent = '';
-					let cssContent = '';
-					let jsContent = '';
-
-					codeBlocks.forEach((block) => {
-						const { lang, code } = block;
-
-						if (lang === 'html') {
-							htmlContent += code + '\n';
-						} else if (lang === 'css') {
-							cssContent += code + '\n';
-						} else if (lang === 'javascript' || lang === 'js') {
-							jsContent += code + '\n';
-						}
+				if (codeBlockContents) {
+					codeBlockContents.forEach((block) => {
+						const lang = block.split('\n')[0].replace('```', '').trim().toLowerCase();
+						const code = block.replace(/```[\s\S]*?\n/, '').replace(/```$/, '');
+						codeBlocks.push({ lang, code });
 					});
+				}
 
-					const inlineHtml = message.content.match(/<html>[\s\S]*?<\/html>/gi);
-					const inlineCss = message.content.match(/<style>[\s\S]*?<\/style>/gi);
-					const inlineJs = message.content.match(/<script>[\s\S]*?<\/script>/gi);
+				let htmlContent = '';
+				let cssContent = '';
+				let jsContent = '';
 
-					if (inlineHtml) {
-						inlineHtml.forEach((block) => {
-							const content = block.replace(/<\/?html>/gi, ''); // Remove <html> tags
-							htmlContent += content + '\n';
-						});
+				codeBlocks.forEach((block) => {
+					const { lang, code } = block;
+
+					if (lang === 'html') {
+						htmlContent += code + '\n';
+					} else if (lang === 'css') {
+						cssContent += code + '\n';
+					} else if (lang === 'javascript' || lang === 'js') {
+						jsContent += code + '\n';
 					}
-					if (inlineCss) {
-						inlineCss.forEach((block) => {
-							const content = block.replace(/<\/?style>/gi, ''); // Remove <style> tags
-							cssContent += content + '\n';
-						});
-					}
-					if (inlineJs) {
-						inlineJs.forEach((block) => {
-							const content = block.replace(/<\/?script>/gi, ''); // Remove <script> tags
-							jsContent += content + '\n';
-						});
-					}
+				});
 
-					if (htmlContent || cssContent || jsContent) {
-						const renderedContent = `
-							<!DOCTYPE html>
-							<html lang="en">
-							<head>
-								<meta charset="UTF-8">
-								<meta name="viewport" content="width=device-width, initial-scale=1.0">
-								<${''}style>
-									body {
-										background-color: white; /* Ensure the iframe has a white background */
-									}
+				const inlineHtml = message.content.match(/<html>[\s\S]*?<\/html>/gi);
+				const inlineCss = message.content.match(/<style>[\s\S]*?<\/style>/gi);
+				const inlineJs = message.content.match(/<script>[\s\S]*?<\/script>/gi);
 
-									${cssContent}
-								</${''}style>
-							</head>
-							<body>
-								${htmlContent}
+				if (inlineHtml) {
+					inlineHtml.forEach((block) => {
+						const content = block.replace(/<\/?html>/gi, ''); // Remove <html> tags
+						htmlContent += content + '\n';
+					});
+				}
+				if (inlineCss) {
+					inlineCss.forEach((block) => {
+						const content = block.replace(/<\/?style>/gi, ''); // Remove <style> tags
+						cssContent += content + '\n';
+					});
+				}
+				if (inlineJs) {
+					inlineJs.forEach((block) => {
+						const content = block.replace(/<\/?script>/gi, ''); // Remove <script> tags
+						jsContent += content + '\n';
+					});
+				}
 
-								<${''}script>
-									${jsContent}
-								</${''}script>
-							</body>
-							</html>
-						`;
-						contents = [...contents, { type: 'iframe', content: renderedContent }];
-					} else {
-						// Check for SVG content
-						for (const block of codeBlocks) {
-							if (block.lang === 'svg' || (block.lang === 'xml' && block.code.includes('<svg'))) {
-								contents = [...contents, { type: 'svg', content: block.code }];
-							}
+				if (htmlContent || cssContent || jsContent) {
+					const renderedContent = `
+						<!DOCTYPE html>
+						<html lang="en">
+						<head>
+							<meta charset="UTF-8">
+							<meta name="viewport" content="width=device-width, initial-scale=1.0">
+							<${''}style>
+								body {
+									background-color: white; /* Ensure the iframe has a white background */
+								}
+
+								${cssContent}
+							</${''}style>
+						</head>
+						<body>
+							${htmlContent}
+
+							<${''}script>
+								${jsContent}
+							</${''}script>
+						</body>
+						</html>
+					`;
+					staged.push({
+						type: 'iframe',
+						content: renderedContent,
+						isDynamic: false,
+						createdAt: (message?.timestamp ? message.timestamp * 1000 : Date.now()),
+						order: orderCounter++
+					});
+					lastNormalIndex = staged.length - 1;
+				} else {
+					// Check for SVG content
+					for (const block of codeBlocks) {
+						if (block.lang === 'svg' || (block.lang === 'xml' && block.code.includes('<svg'))) {
+							staged.push({
+								type: 'svg',
+								content: block.code,
+								isDynamic: false,
+								createdAt: (message?.timestamp ? message.timestamp * 1000 : Date.now()),
+								order: orderCounter++
+							});
+							lastNormalIndex = staged.length - 1;
 						}
 					}
 				}
+			}
+		});
+
+		// 2. Ajouter les artefacts dynamiques (en conservant l'ordre d'apparition chronologique)
+		console.log('Adding dynamic artifacts to staged list...');
+		if (!($dynamicArtifactsHidden)) {
+			$dynamicArtifacts.forEach(artifact => {
+				staged.push({
+					type: artifact.type,
+					content: artifact.content,
+					id: artifact.id,
+					title: artifact.title,
+					isDynamic: true,
+					createdAt: artifact.timestamp ?? Date.now(),
+					order: orderCounter++
+				});
 			});
 		}
 
-		// 2. Ajouter les artefacts dynamiques (prioritaires)
-		console.log('Adding dynamic artifacts to contents...');
-		$dynamicArtifacts.forEach(artifact => {
-			console.log('Processing dynamic artifact:', artifact);
-			contents.push({
-				type: artifact.type,
-				content: artifact.content,
-				id: artifact.id,
-				title: artifact.title,
-				isDynamic: true
-			});
-		});
+		// 3. Trier par createdAt puis par ordre d'insertion pour stabilité
+		staged.sort((a, b) => (a.createdAt - b.createdAt) || (a.order - b.order));
+		contents = staged.map(({ createdAt, order, ...rest }) => rest);
 
 		console.log('Final contents array:', contents);
 		console.log('Contents length:', contents.length);
@@ -165,10 +204,19 @@
 			showArtifacts.set(false);
 		} else {
 			console.log('Contents found, showing artifacts');
+			showArtifacts.set(true);
+			showControls.set(true);
 		}
 
-		// Si on a des artifacts dynamiques, sélectionner le plus récent
-		if ($dynamicArtifacts.length > 0) {
+		// Sélectionner en priorité le dernier artefact normal (HTML/SVG), sauf si on force la sélection d'un dynamique
+		if (!($forceSelectDynamicArtifacts)) {
+			// dernier non dynamique
+			let idx = -1;
+			for (let i = contents.length - 1; i >= 0; i--) {
+				if (!contents[i].isDynamic) { idx = i; break; }
+			}
+			selectedContentIdx = idx >= 0 ? idx : (contents.length ? contents.length - 1 : 0);
+		} else if ($dynamicArtifacts.length > 0) {
 			selectedContentIdx = contents.length - 1;
 		} else {
 			selectedContentIdx = contents ? contents.length - 1 : 0;
@@ -221,25 +269,35 @@
 	};
 
 	const showFullScreen = () => {
-		if (iframeElement.requestFullscreen) {
-			iframeElement.requestFullscreen();
-		} else if (iframeElement.webkitRequestFullscreen) {
-			iframeElement.webkitRequestFullscreen();
-		} else if (iframeElement.msRequestFullscreen) {
-			iframeElement.msRequestFullscreen();
+		try {
+			if (iframeElement?.requestFullscreen) {
+				iframeElement.requestFullscreen();
+			} else if ((iframeElement as any)?.webkitRequestFullscreen) {
+				(iframeElement as any).webkitRequestFullscreen();
+			} else if ((iframeElement as any)?.msRequestFullscreen) {
+				(iframeElement as any).msRequestFullscreen();
+			} else {
+				console.warn('Fullscreen API not available');
+			}
+		} catch (e) {
+			console.error('Fullscreen request failed', e);
 		}
 	};
 
 	const closeHandler = () => {
 		dispatch('close');
+		// Si des artefacts dynamiques existent, les masquer pour permettre un éventuel "Reopen"
+		if ($dynamicArtifacts.length > 0) {
+			dynamicArtifactsHidden.set(true);
+		}
 		showControls.set(false);
 		showArtifacts.set(false);
-		clearDynamicArtifacts();
 	};
 
 	const closeDynamicArtifacts = () => {
-		clearDynamicArtifacts();
-		// Recalculer les contenus des messages après avoir fermé les artifacts dynamiques
+		// Ne pas supprimer, simplement masquer les artefacts dynamiques
+		dynamicArtifactsHidden.set(true);
+		// Recalculer les contenus des messages après avoir masqué les artifacts dynamiques
 		if (history) {
 			messages = createMessagesList(history, history.currentId);
 			getContents();
@@ -263,7 +321,7 @@
 	});
 </script>
 
-<div class=" w-full h-full relative flex flex-col bg-gray-50 dark:bg-gray-850">
+<div class=" w-full h-full relative flex flex-col bg-gray-50 dark:bg-gray-850 p-4 rounded-l-lg border-l border-gray-200 dark:border-gray-700">
 	<div class="w-full h-full flex flex-col flex-1 relative">
 		{#if contents.length > 0}
 			<div class="flex items-center justify-between w-full mb-4">
@@ -290,10 +348,14 @@
 					</button>
 
 					<div class="text-sm font-medium">
-						{contents[selectedContentIdx].title || `${contents[selectedContentIdx].type} ${selectedContentIdx + 1}/${contents.length}`}
+						{contents[selectedContentIdx].title || `${getTypeLabel(contents[selectedContentIdx].type)} ${selectedContentIdx + 1}/${contents.length}`}
 						{#if contents[selectedContentIdx].isDynamic}
 							<span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-								{$i18n.t('Dynamic')}
+								{$i18n.t('Sources')}
+							</span>
+						{:else}
+							<span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+								{$i18n.t('Code')}
 							</span>
 						{/if}
 					</div>
@@ -321,21 +383,24 @@
 				</div>
 
 				<div class="flex items-center gap-1">
-					{#if $dynamicArtifacts.length > 0}
-						<button
-							class="bg-none border-none text-xs bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 transition rounded-md px-1.5 py-0.5"
-							on:click={closeDynamicArtifacts}
-							title={$i18n.t('Close dynamic artifacts')}
-						>
-							{$i18n.t('Close Dynamic')}
-						</button>
-					{/if}
+					<button
+						class="bg-none border-none text-xs bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 transition rounded-md px-1.5 py-0.5"
+						on:click={closeHandler}
+						title={$i18n.t('Close artifacts')}
+					>
+						{$i18n.t('Close')}
+					</button>
 					
 					<button
 						class="copy-code-button bg-none border-none text-xs bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 transition rounded-md px-1.5 py-0.5"
-						on:click={() => {
-							copyToClipboard(contents[selectedContentIdx].content);
-							copied = true;
+						on:click={async () => {
+							const ok = await copyToClipboard(contents[selectedContentIdx].content);
+							copied = ok;
+							if (ok) {
+								toast.success($i18n.t('Copied'));
+							} else {
+								toast.error($i18n.t('Failed to copy'));
+							}
 
 							setTimeout(() => {
 								copied = false;
@@ -357,20 +422,18 @@
 			</div>
 		{/if}
 
-		{#if overlay}
-			<div class=" absolute top-0 left-0 right-0 bottom-0 z-10"></div>
-		{/if}
-
 		<div class="flex-1 w-full h-full">
 			<div class=" h-full flex flex-col">
 				{#if contents.length > 0}
-					<div class="max-w-full w-full h-full">
+					<div class="max-w-full w-full h-full relative">
 						{#if contents[selectedContentIdx].type === 'iframe'}
 							<iframe
 								bind:this={iframeElement}
 								title="Content"
 								srcdoc={contents[selectedContentIdx].content}
 								class="w-full border-0 h-full rounded-none"
+								allowfullscreen
+								allow="fullscreen"
 								sandbox="allow-scripts{($settings?.iframeSandboxAllowForms ?? false)
 									? ' allow-forms'
 									: ''}{($settings?.iframeSandboxAllowSameOrigin ?? false)
@@ -378,6 +441,9 @@
 									: ''}"
 								on:load={iframeLoadHandler}
 							></iframe>
+							{#if overlay}
+								<div class="absolute inset-0 z-10"></div>
+							{/if}
 						{:else if contents[selectedContentIdx].type === 'svg'}
 							<SvgPanZoom
 								className=" w-full h-full max-h-full overflow-hidden"
