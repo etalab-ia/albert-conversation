@@ -102,9 +102,11 @@
 			transition={flyAndScale}
 		>
 			{#if Object.keys(tools).length > 0}
-				<div class="flex justify-between  max-h-28 overflow-y-auto scrollbar-hidden">
+				<div class="flex justify-between max-h-28 overflow-y-auto scrollbar-hidden">
 					{#each Object.keys(tools) as toolId}
-						<div class="flex w-full items-center gap-4 px-3 py-2 text-sm font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800">
+						<div
+							class="flex w-full items-center gap-4 px-3 py-2 text-sm font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800"
+						>
 							<div class="flex-1 truncate min-w-0">
 								<Tooltip
 									content={tools[toolId]?.description ?? ''}
@@ -112,7 +114,13 @@
 									className="flex flex-1 gap-3 items-center"
 								>
 									<div class="shrink-0">
-										<WrenchSolid />
+										{#if ['web', 'rechercher', 'recherche'].some((keyword) => tools[toolId].name
+												.toLowerCase()
+												.includes(keyword))}
+											<GlobeAltSolid />
+										{:else}
+											<WrenchSolid />
+										{/if}
 									</div>
 
 									<div class="truncate">{tools[toolId].name}</div>
