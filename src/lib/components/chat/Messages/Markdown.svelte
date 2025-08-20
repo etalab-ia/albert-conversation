@@ -1,5 +1,5 @@
-<script>
-	import { marked } from 'marked';
+<script lang="ts">
+	import { marked, type Token } from 'marked';
 	import { replaceTokens, processResponseContent } from '$lib/utils';
 	import { user } from '$lib/stores';
 
@@ -11,17 +11,17 @@
 
 	const dispatch = createEventDispatcher();
 
-	export let id = '';
-	export let content;
-	export let model = null;
-	export let save = false;
+	export let id: string = '';
+	export let content: string;
+	export let model: { name?: string } | null = null;
+	export let save: boolean = false;
 
-	export let sourceIds = [];
+	export let sourceIds: string[] = [];
 
-	export let onSourceClick = () => {};
-	export let onTaskClick = () => {};
+	export let onSourceClick: (arg?: unknown) => void = () => {};
+	export let onTaskClick: (arg?: unknown) => void = () => {};
 
-	let tokens = [];
+	let tokens: Token[] = [];
 
 	const options = {
 		throwOnError: false
@@ -33,7 +33,7 @@
 	$: (async () => {
 		if (content) {
 			tokens = marked.lexer(
-				replaceTokens(processResponseContent(content), sourceIds, model?.name, $user?.name)
+				replaceTokens(processResponseContent(content), sourceIds, (model as any)?.name, (/** @type {any} */ ($user))?.name)
 			);
 		}
 	})();

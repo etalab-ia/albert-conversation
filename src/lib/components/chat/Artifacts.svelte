@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { onMount, getContext, createEventDispatcher } from 'svelte';
-	const i18n = getContext('i18n');
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
+	const i18n = getContext<Writable<i18nType>>('i18n');
 	const dispatch = createEventDispatcher();
 
-	import { chatId, settings, showArtifacts, showControls, dynamicArtifacts, forceSelectDynamicArtifacts, dynamicArtifactsHidden } from '$lib/stores';
+	import { chatId, settings, showArtifacts, showControls, dynamicArtifacts, forceSelectDynamicArtifacts, dynamicArtifactsHidden, theme } from '$lib/stores';
 	import XMark from '../icons/XMark.svelte';
 	import { copyToClipboard, createMessagesList } from '$lib/utils';
 	import ArrowsPointingOut from '../icons/ArrowsPointingOut.svelte';
@@ -12,16 +14,79 @@
 	import SvgPanZoom from '../common/SVGPanZoom.svelte';
 	import ArrowLeft from '../icons/ArrowLeft.svelte';
 	import { clearDynamicArtifacts } from '$lib/utils/artifacts';
+	import MarkdownTokens from '$lib/components/chat/Messages/Markdown/MarkdownTokens.svelte';
+	import Markdown from '$lib/components/chat/Messages/Markdown.svelte';
+	import { marked } from 'marked';
 
 	export let overlay = false;
 	export let history;
-	let messages = [];
+
+	// Strongly-typed message structure for parsing artifacts
+	type ChatMessage = { role?: string; content?: string; timestamp?: number };
+	let messages: ChatMessage[] = [];
 
 	let contents: Array<{ type: string; content: string; id?: string; title?: string; isDynamic?: boolean }> = [];
 	let selectedContentIdx = 0;
 
 	let copied = false;
 	let iframeElement: HTMLIFrameElement;
+
+	// Compute sandbox attribute string to avoid TS complaints on Settings type
+	let iframeSandbox = 'allow-scripts';
+	$: iframeSandbox = `allow-scripts${(($settings as any)?.iframeSandboxAllowForms ?? false) ? ' allow-forms' : ''}${(($settings as any)?.iframeSandboxAllowSameOrigin ?? false) ? ' allow-same-origin' : ''}`;
+
+	// Theme-aware rendering for iframe contents
+	let effectiveTheme: 'light' | 'dark' = 'light';
+	$: {
+		const currentTheme = $theme;
+		if (currentTheme === 'system') {
+			const prefersDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+			effectiveTheme = prefersDark ? 'dark' : 'light';
+		} else if (currentTheme === 'dark' || currentTheme === 'oled-dark') {
+			effectiveTheme = 'dark';
+		} else {
+			effectiveTheme = 'light';
+		}
+	}
+
+	// Re-render contents when theme changes so iframe srcdoc colors update
+	$: $theme, getContents();
+
+	// Helper to wrap arbitrary HTML with theme-aware styles for iframe srcdoc
+	const buildThemedHtml = (innerHtml: string, extraCss = '', extraJs = ''): string => {
+		return `
+			<!DOCTYPE html>
+			<html lang="en" theme="${effectiveTheme}" data-theme="${effectiveTheme}">
+			<head>
+				<meta charset="UTF-8">
+				<meta name="viewport" content="width=device-width, initial-scale=1.0">
+				<meta name="color-scheme" content="${effectiveTheme}">
+				<${''}style>
+					html, body { margin: 0; }
+					:root { color-scheme: light dark; }
+					html[theme='light'], html[data-theme='light'] { --bg: #ffffff; --fg: #111827; --card:#ffffff; --surface:#f9fafb; --border:#e5e7eb; --accent:#3b82f6; }
+					html[theme='dark'], html[data-theme='dark'] { --bg: #161616; --fg: #e5e5e5; --card:#111827; --surface:#0f172a; --border:#374151; --accent:#3b82f6; }
+					body { background-color: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+					.notification-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+					.title { font-weight: 700; margin-bottom: 14px; font-size: 16px; }
+					.sources-container { display: flex; flex-direction: column; gap: 12px; }
+					.source-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+					.source-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+					.source-number { background: var(--accent); color: white; padding: 3px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+					.source-content { font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+					a { color: var(--accent); text-decoration: underline; }
+					${extraCss}
+				</${''}style>
+			</head>
+			<body>
+				${innerHtml}
+				<${''}script>
+					${extraJs}
+				</${''}script>
+			</body>
+			</html>
+		`;
+	};
 
 	const getTypeLabel = (type: string) => {
 		switch (type) {
@@ -76,10 +141,11 @@
 		messages.forEach((message) => {
 			if (message?.role !== 'user' && message?.content) {
 				const codeBlockContents = message.content.match(/```[\s\S]*?```/g);
-				let codeBlocks = [];
+				type CodeBlock = { lang: string; code: string };
+				let codeBlocks: CodeBlock[] = [];
 
 				if (codeBlockContents) {
-					codeBlockContents.forEach((block) => {
+					codeBlockContents.forEach((block: string) => {
 						const lang = block.split('\n')[0].replace('```', '').trim().toLowerCase();
 						const code = block.replace(/```[\s\S]*?\n/, '').replace(/```$/, '');
 						codeBlocks.push({ lang, code });
@@ -90,7 +156,7 @@
 				let cssContent = '';
 				let jsContent = '';
 
-				codeBlocks.forEach((block) => {
+				codeBlocks.forEach((block: { lang: string; code: string }) => {
 					const { lang, code } = block;
 
 					if (lang === 'html') {
@@ -107,19 +173,19 @@
 				const inlineJs = message.content.match(/<script>[\s\S]*?<\/script>/gi);
 
 				if (inlineHtml) {
-					inlineHtml.forEach((block) => {
+					inlineHtml.forEach((block: string) => {
 						const content = block.replace(/<\/?html>/gi, ''); // Remove <html> tags
 						htmlContent += content + '\n';
 					});
 				}
 				if (inlineCss) {
-					inlineCss.forEach((block) => {
+					inlineCss.forEach((block: string) => {
 						const content = block.replace(/<\/?style>/gi, ''); // Remove <style> tags
 						cssContent += content + '\n';
 					});
 				}
 				if (inlineJs) {
-					inlineJs.forEach((block) => {
+					inlineJs.forEach((block: string) => {
 						const content = block.replace(/<\/?script>/gi, ''); // Remove <script> tags
 						jsContent += content + '\n';
 					});
@@ -128,14 +194,23 @@
 				if (htmlContent || cssContent || jsContent) {
 					const renderedContent = `
 						<!DOCTYPE html>
-						<html lang="en">
+						<html lang="en" theme="${effectiveTheme}" data-theme="${effectiveTheme}">
 						<head>
 							<meta charset="UTF-8">
 							<meta name="viewport" content="width=device-width, initial-scale=1.0">
+							<meta name="color-scheme" content="${effectiveTheme}">
 							<${''}style>
-								body {
-									background-color: white; /* Ensure the iframe has a white background */
-								}
+								html, body { margin: 0; }
+								/* Base host styles driven by theme */
+								:root { color-scheme: light dark; }
+								html[theme='light'], html[data-theme='light'] { --bg: #ffffff; --fg: #111827; --card:#ffffff; --surface:#f9fafb; --border:#e5e7eb; --accent:#3b82f6; }
+								html[theme='dark'], html[data-theme='dark'] { --bg: #161616; --fg: #e5e5e5; --card:#111827; --surface:#0f172a; --border:#374151; --accent:#3b82f6; }
+								body { background-color: var(--bg); color: var(--fg); }
+								.notification-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+								.title { font-weight: 600; margin-bottom: 12px; }
+								.sources-container { display: flex; flex-direction: column; gap: 12px; }
+								.source-item { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+								.source-number { background: var(--accent); color: white; padding: 2px 8px; border-radius: 9999px; font-size: 12px; }
 
 								${cssContent}
 							</${''}style>
@@ -179,9 +254,40 @@
 		console.log('Adding dynamic artifacts to staged list...');
 		if (!($dynamicArtifactsHidden)) {
 			$dynamicArtifacts.forEach(artifact => {
+				const isFullDoc = /<!DOCTYPE html>|<html[\s>]/i.test(artifact.content);
+				const looksLikeHtmlFragment = /<\w+[\s\S]*>/i.test(artifact.content);
+				let contentWrapped = artifact.content;
+				let coercedType = artifact.type;
+
+				                if (artifact.type === 'iframe') {
+                    // If pipeline returned our sources HTML shell, extract and format the markdown text
+                    if (/<div class=\"source-content\">/i.test(artifact.content)) {
+                        const matches = Array.from(artifact.content.matchAll(/<div class=\"source-content\">([\s\S]*?)<\/div>/gi));
+                        const parts = matches.map((m, index) => {
+                            let content = m[1]
+                                .replace(/<[^>]+>/g, '')
+                                .replace(/&lt;/g, '<')
+                                .replace(/&gt;/g, '>')
+                                .replace(/&amp;/g, '&')
+                                .trim();
+                            
+                            // Format as markdown with proper source card structure
+                            return `## Source ${index + 1}\n\n${content}`;
+                        });
+                        contentWrapped = parts.join('\n\n---\n\n');
+                        coercedType = 'text';
+                    } else if (!isFullDoc && looksLikeHtmlFragment) {
+                        contentWrapped = buildThemedHtml(artifact.content);
+                        coercedType = 'iframe';
+                    } else if (!isFullDoc && !looksLikeHtmlFragment) {
+                        // Treat as Markdown/plain text → render via Markdown renderer outside of iframe
+                        contentWrapped = artifact.content ?? '';
+                        coercedType = 'text';
+                    }
+                }
 				staged.push({
-					type: artifact.type,
-					content: artifact.content,
+					type: coercedType,
+					content: contentWrapped,
 					id: artifact.id,
 					title: artifact.title,
 					isDynamic: true,
@@ -238,15 +344,33 @@
 	}
 
 	const iframeLoadHandler = () => {
-		iframeElement.contentWindow.addEventListener(
+		const cw = iframeElement?.contentWindow;
+		if (!cw) return;
+
+		// Sync app theme into iframe via attribute to allow CSS overrides inside srcdoc
+		try {
+			const root = cw.document?.documentElement;
+			if (root) {
+				root.setAttribute('data-theme', effectiveTheme);
+				root.setAttribute('theme', effectiveTheme);
+				// Ensure our inline <style> rules take effect: force a reflow
+				const s = cw.document.createElement('style');
+				s.textContent = '';
+				cw.document.head.appendChild(s);
+				cw.document.head.removeChild(s);
+			}
+		} catch (e) {
+			// no-op
+		}
+		cw.addEventListener(
 			'click',
-			function (e) {
-				const target = e.target.closest('a');
+			function (e: MouseEvent) {
+				const target = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
 				if (target && target.href) {
 					e.preventDefault();
 					const url = new URL(target.href, iframeElement.baseURI);
 					if (url.origin === window.location.origin) {
-						iframeElement.contentWindow.history.pushState(
+						cw.history.pushState(
 							null,
 							'',
 							url.pathname + url.search + url.hash
@@ -260,10 +384,10 @@
 		);
 
 		// Cancel drag when hovering over iframe
-		iframeElement.contentWindow.addEventListener('mouseenter', function (e) {
-			e.preventDefault();
-			iframeElement.contentWindow.addEventListener('dragstart', (event) => {
-				event.preventDefault();
+		cw.addEventListener('mouseenter', function (e: Event) {
+			(e as any)?.preventDefault?.();
+			cw.addEventListener('dragstart', (event: Event) => {
+				(event as any)?.preventDefault?.();
 			});
 		});
 	};
@@ -434,11 +558,7 @@
 								class="w-full border-0 h-full rounded-none"
 								allowfullscreen
 								allow="fullscreen"
-								sandbox="allow-scripts{($settings?.iframeSandboxAllowForms ?? false)
-									? ' allow-forms'
-									: ''}{($settings?.iframeSandboxAllowSameOrigin ?? false)
-									? ' allow-same-origin'
-									: ''}"
+								sandbox={iframeSandbox}
 								on:load={iframeLoadHandler}
 							></iframe>
 							{#if overlay}
@@ -450,8 +570,8 @@
 								svg={contents[selectedContentIdx].content}
 							/>
 						{:else if contents[selectedContentIdx].type === 'text'}
-							<div class="w-full h-full p-4 overflow-auto">
-								<pre class="whitespace-pre-wrap text-sm font-mono text-gray-900 dark:text-white">{contents[selectedContentIdx].content}</pre>
+							<div class="w-full h-full p-4 overflow-auto text-sm">
+								<Markdown id={`artifact-md-${selectedContentIdx}`} content={contents[selectedContentIdx].content} />
 							</div>
 						{:else if contents[selectedContentIdx].type === 'image'}
 							<div class="w-full h-full flex items-center justify-center p-4">
