@@ -114,7 +114,7 @@
 									className="flex flex-1 gap-3 items-center"
 								>
 									<div class="shrink-0">
-										{#if ['web', 'rechercher', 'recherche'].some((keyword) => tools[toolId].name
+										{#if ['web', 'rechercher', 'recherche', 'internet'].some((keyword) => tools[toolId].name
 												.toLowerCase()
 												.includes(keyword))}
 											<GlobeAltSolid />
