@@ -45,8 +45,8 @@ body {
     border-radius: 16px;
     padding: 32px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.04);
-    width: 100%;
-    max-width: 100%;
+    width: 90%;
+    max-width: 90%;
     color: #333;
     animation: fadeInUp 0.6s ease-out;
     height: 95%;
@@ -83,8 +83,9 @@ body {
     gap: 0;
     height: 95%;
     overflow-y: auto;
-    padding-right: 12px;
-    padding-bottom: 20px;
+    padding-right: 8px;
+	padding-left: 8px;
+    padding-bottom: 0px;
 }
 
 .source-item {
@@ -108,12 +109,13 @@ body {
     content: '';
     position: absolute;
     top: 0;
-    left: 0;
-    right: 0;
+    left: 2%;
+    right: 2%;
     height: 3px;
     background: linear-gradient(90deg, #3b82f6, #60a5fa);
     transform: scaleX(0);
     transition: transform 0.3s ease;
+	border-radius: 32px;
 }
 
 .source-item:hover::before {
@@ -293,8 +295,8 @@ body {
     border-radius: 16px;
     padding: 32px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.2);
-    width: 100%;
-    max-width: 100%;
+    width: 90%;
+    max-width: 90%;
     color: #f9f9f9;
     animation: fadeInUp 0.6s ease-out;
     height: 95%;
@@ -333,8 +335,9 @@ body {
     gap: 0;
     height: 95%;
     overflow-y: auto;
-    padding-right: 12px;
-    padding-bottom: 20px;
+    padding-right: 8px;
+	padding-left: 8px;
+    padding-bottom: 0px;
 }
 
 .source-item {
@@ -355,16 +358,18 @@ body {
     height: auto;
 }
 
+
 .source-item::before {
     content: '';
     position: absolute;
     top: 0;
-    left: 0;
-    right: 0;
+    left: 2%;
+    right: 2%;
     height: 3px;
     background: linear-gradient(90deg, #3b82f6, #60a5fa);
     transform: scaleX(0);
     transition: transform 0.3s ease;
+	border-radius: 32px;
 }
 
 .source-item:hover::before {
