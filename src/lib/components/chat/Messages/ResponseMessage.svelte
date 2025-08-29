@@ -15,7 +15,7 @@
 	import { getChatById } from '$lib/apis/chats';
 	import { generateTags } from '$lib/apis';
 
-	import { config, models, settings, temporaryChatEnabled, TTSWorker, user } from '$lib/stores';
+	import { config, models, settings, temporaryChatEnabled, TTSWorker, user, dynamicArtifacts, showArtifacts, showControls, forceSelectDynamicArtifacts, dynamicArtifactsHidden } from '$lib/stores';
 	import { synthesizeOpenAISpeech } from '$lib/apis/audio';
 	import { imageGenerations } from '$lib/apis/images';
 	import {
@@ -153,6 +153,19 @@
 	let generatingImage = false;
 
 	let showRateComment = false;
+	const reopenDynamicArtifactsForThisMessage = () => {
+		if ($dynamicArtifacts.length > 0) {
+			// Forcer la sélection d'un artefact dynamique dans la vue Artefacts
+			forceSelectDynamicArtifacts.set(true);
+			dynamicArtifactsHidden.set(false);
+			showArtifacts.set(true);
+			showControls.set(true);
+			// Désactiver le forçage après le prochain tick pour revenir au comportement normal
+			setTimeout(() => forceSelectDynamicArtifacts.set(false), 0);
+		} else {
+			toast.info($i18n.t('No dynamic artifacts for this response'));
+		}
+	};
 
 	const copyToClipboard = async (text) => {
 		text = removeAllDetails(text);
@@ -990,6 +1003,23 @@
 											</button>
 										</Tooltip>
 									{/if}
+								{/if}
+
+								<!-- Reopen Dynamic Artifacts button -->
+								{#if $dynamicArtifacts.length > 0 && $dynamicArtifactsHidden}
+									<Tooltip content={$i18n.t('Open last sources')} placement="bottom">
+										<button
+											class="{isLastMessage
+												? 'visible'
+												: 'invisible group-hover:visible'} p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition"
+											on:click={reopenDynamicArtifactsForThisMessage}
+										>
+											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M12 17.25h8.25" />
+</svg>
+
+										</button>
+									</Tooltip>
 								{/if}
 
 								<Tooltip content={$i18n.t('Copy')} placement="bottom">

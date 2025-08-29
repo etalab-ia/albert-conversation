@@ -29,17 +29,17 @@ export const USAGE_POOL: Writable<null | string[]> = writable(null);
 export const theme = writable('system');
 
 export const shortCodesToEmojis = writable(
-	Object.entries(emojiShortCodes).reduce((acc, [key, value]) => {
+	Object.entries(emojiShortCodes).reduce((acc: Record<string, string>, [key, value]) => {
 		if (typeof value === 'string') {
-			acc[value] = key;
+			acc[value] = key as string;
 		} else {
-			for (const v of value) {
-				acc[v] = key;
+			for (const v of value as string[]) {
+				acc[v] = key as string;
 			}
 		}
 
 		return acc;
-	}, {})
+	}, {} as Record<string, string>)
 );
 
 export const TTSWorker = writable(null);
@@ -63,7 +63,9 @@ export const toolServers = writable([]);
 
 export const banners: Writable<Banner[]> = writable([]);
 
-export const settings: Writable<Settings> = writable({});
+export const settings: Writable<Settings> = writable({
+	chatDirection: 'auto'
+});
 
 export const showSidebar = writable(false);
 export const showSettings = writable(false);
@@ -75,6 +77,26 @@ export const showControls = writable(false);
 export const showOverview = writable(false);
 export const showArtifacts = writable(false);
 export const showCallOverlay = writable(false);
+
+// Store pour les artefacts dynamiques émis via event emitter
+export const dynamicArtifacts = writable<Array<{
+	id: string;
+	type: 'iframe' | 'svg' | 'text' | 'image' | 'file';
+	content: string;
+	title?: string;
+	timestamp: number;
+	chatId?: string;
+	messageId?: string;
+}>>([]);
+
+// Indique à l'UI des artefacts de sélectionner en priorité un artefact dynamique
+export const forceSelectDynamicArtifacts = writable(false);
+
+// Masquer/afficher les artefacts dynamiques sans les supprimer
+export const dynamicArtifactsHidden = writable(false);
+
+// Message ID à cibler lors d'un reopen d'artefacts
+export const targetArtifactMessageId: Writable<string | null> = writable(null);
 
 export const temporaryChatEnabled = writable(false);
 export const scrollPaginationEnabled = writable(false);

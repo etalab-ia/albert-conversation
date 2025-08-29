@@ -247,16 +247,43 @@
 	};
 
 	const chatEventHandler = async (event, cb) => {
-		console.log(event);
+		console.log('=== CHAT EVENT HANDLER CALLED ===');
+		console.log('Full event:', event);
+		console.log('Event type:', event?.data?.type);
+		console.log('Event data:', event?.data?.data);
+		console.log('Chat ID:', event.chat_id);
+		console.log('Current chat ID:', $chatId);
+		console.log('=== END CHAT EVENT LOG ===');
 
+		const type = event?.data?.type ?? null;
+		const data = event?.data?.data ?? null;
+
+		// Handle artifacts events FIRST - they don't need chat/message validation
+		if (type === 'artifacts') {
+			console.log('=== ARTIFACTS EVENT RECEIVED ===');
+			console.log('Event data:', data);
+			console.log('Event type:', type);
+			console.log('Chat ID:', event.chat_id);
+			console.log('Current chat ID:', $chatId);
+			
+			// Import and use emitArtifact function
+			import('$lib/utils/artifacts').then(({ emitArtifact }) => {
+				console.log('emitArtifact function imported successfully');
+				const artifactId = emitArtifact({ ...data, chatId: event.chat_id, messageId: event.message_id });
+				console.log('Artifact emitted with ID:', artifactId);
+				console.log('=== END ARTIFACTS EVENT ===');
+			}).catch(error => {
+				console.error('Error importing emitArtifact:', error);
+			});
+			return; // Exit early after handling artifacts
+		}
+
+		// Handle other events that require chat/message validation
 		if (event.chat_id === $chatId) {
 			await tick();
 			let message = history.messages[event.message_id];
 
 			if (message) {
-				const type = event?.data?.type ?? null;
-				const data = event?.data?.data ?? null;
-
 				if (type === 'status') {
 					if (message?.statusHistory) {
 						message.statusHistory.push(data);
@@ -349,8 +376,6 @@
 					eventConfirmationMessage = data.message;
 					eventConfirmationInputPlaceholder = data.placeholder;
 					eventConfirmationInputValue = data?.value ?? '';
-				} else {
-					console.log('Unknown message type', data);
 				}
 
 				history.messages[event.message_id] = message;
