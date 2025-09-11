@@ -60,17 +60,17 @@
 	let selectedModel = '';
 	$: selectedModel = items.find((item) => item.value === value) ?? '';
 
-	// Auto-select "albert-small" if available, or first model if no value is set
+	// Auto-select "albert-large" if available, or first model if no value is set
 	$: if (items.length > 0 && !value) {
-		const albertSmallModel = items.find((item) => 
-			item.value === 'albert-small' || 
-			item.model?.name === 'albert-small' ||
-			item.label.toLowerCase().includes('albert-small')
+		const albertLargeModel = items.find((item) => 
+			item.value === 'albert-large' || 
+			item.model?.name === 'albert-large' ||
+			item.label.toLowerCase().includes('albert-large')
 		);
 		
-		if (albertSmallModel) {
-			value = albertSmallModel.value;
-			dispatch('change', albertSmallModel.value);
+		if (albertLargeModel) {
+			value = albertLargeModel.value;
+			dispatch('change', albertLargeModel.value);
 		} else if (items.length > 0) {
 			value = items[0].value;
 			dispatch('change', items[0].value);
