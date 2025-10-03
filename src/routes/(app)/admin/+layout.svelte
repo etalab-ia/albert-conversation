@@ -57,12 +57,14 @@
 							href="/admin">{$i18n.t('Users')}</a
 						>
 
+						<!-- TEMPORARILY DISABLED: Stats causing database performance issues
 						<a
 							class="min-w-fit rounded-full p-1.5 {$page.url.pathname.includes('/admin/stats')
 								? ''
 								: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
 							href="/admin/stats">{$i18n.t('Stats')}</a
 						>
+						-->
 
 						<a
 							class="min-w-fit rounded-full p-1.5 {$page.url.pathname.includes('/admin/evaluations')
