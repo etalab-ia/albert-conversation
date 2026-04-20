@@ -1136,7 +1136,7 @@
 	"TLS": "TLS",
 	"To access the available model names for downloading,": "Pour accéder aux noms des modèles disponibles,",
 	"To access the GGUF models available for downloading,": "Pour accéder aux modèles GGUF disponibles,",
-	"To access the WebUI, please reach out to the administrator. Admins can manage user statuses from the Admin Panel.": "Pour accéder à l'interface Web, veuillez contacter l'administrateur. Les administrateurs peuvent gérer les statuts des utilisateurs depuis le panneau d'administration.",
+	"To access the WebUI, please reach out to the administrator. Admins can manage user statuses from the Admin Panel.": "Ce produit est une expérimentation : pour que votre compte soit créé, il faut impérativement nous contacter pour la demande, en privilégiant le canal Tchap. C'est un membre de l'équipe qui validera votre demande à la main.",
 	"To attach knowledge base here, add them to the \"Knowledge\" workspace first.": "Pour attacher une base de connaissances ici, ajoutez-les d'abord à l'espace de travail « Connaissances ».",
 	"To learn more about available endpoints, visit our documentation.": "Pour en savoir plus sur les points de terminaison disponibles, consultez notre documentation.",
 	"To protect your privacy, only ratings, model IDs, tags, and metadata are shared from your feedback—your chat logs remain private and are not included.": "Pour protéger votre confidentialité, seules les notes, les identifiants de modèle, les tags et les métadonnées de vos commentaires sont partagés. Vos journaux de discussion restent privés et ne sont pas inclus.",
