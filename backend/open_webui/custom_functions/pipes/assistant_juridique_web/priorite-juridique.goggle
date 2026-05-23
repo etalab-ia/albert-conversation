@@ -1,0 +1,14 @@
+! name: "Priorité Juridique FR/EU"
+! description: "Priorise les principaux sites législatifs et jurisprudentiels français et européens"
+! public: true
+! author: "Utilisateur Brave"
+
+$discard
+
+$boost=4, site=legifrance.gouv.fr
+$boost=4, site=conseil-constitutionnel.fr
+$boost=4, site=eur-lex.europa.eu
+$boost=4, site=echr.coe.int
+$boost=4, site=assemblee-nationale.fr
+$boost=4, site=senat.fr
+$boost=4, site=conseil-etat.fr
